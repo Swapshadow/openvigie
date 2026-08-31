@@ -1,0 +1,13 @@
+name: openvigie
+
+services:
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+    restart: unless-stopped

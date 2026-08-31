@@ -47,6 +47,23 @@ openvigie/
 
 ## Run the web prototype
 
+### With Docker Desktop
+
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:3000`. Stop the application with `Ctrl+C`, or run
+`docker compose down` from another terminal.
+
+The Docker image copies the application into the container instead of mounting
+the macOS project directory. This avoids intermittent file-sharing `EIO` errors
+on Docker Desktop.
+
+### With Node.js
+
 Requirements:
 
 - Node.js 22.13 or newer
