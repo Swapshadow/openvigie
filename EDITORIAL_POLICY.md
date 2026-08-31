@@ -43,6 +43,24 @@ edition. Updating an article must not silently erase the earlier conclusion.
 
 ## Automation
 
-Automated collection and summarization may assist the newsroom, but publication
-requires traceable sources and an editorial status. Generated text must not
-invent quotations, motives, attribution, or certainty.
+The automatic source feed is an aggregator, not an autonomous newsroom.
+
+- Sources are selected in code from a documented whitelist. A public request
+  cannot make the collector fetch an arbitrary URL.
+- OpenVigie stores and displays only feed metadata, a short plain-text excerpt,
+  attribution, and a direct link. It does not archive article bodies or hotlink
+  source images.
+- Feed content is never interpreted as trusted HTML. XML size is limited and
+  unsafe declarations are rejected before parsing.
+- Categorization and ranking are deterministic. Ranking reflects freshness,
+  configured source priority, CVE signals, and source diversity; it is never a
+  score of truth.
+- No generative AI rewrites, translates, or summarizes automatic feed items.
+  The title and excerpt remain attributable to the source.
+- A source being listed, repeated, or highly ranked does not make a claim
+  verified. Geopolitical conclusions still require independent corroboration
+  and human editorial status.
+
+Automated collection may assist the newsroom, but publication of an OpenVigie
+analysis requires traceable sources and an editorial status. Generated or human
+text must not invent quotations, motives, attribution, or certainty.

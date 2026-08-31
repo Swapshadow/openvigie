@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { issues, stories, type Cadence } from './bulletin-data';
 import InventoryWorkspace from './inventory-workspace';
+import LiveBulletinFeed from './live-bulletin-feed';
 
 type View = 'bulletin' | 'assets';
 
@@ -29,7 +30,7 @@ export default function Home() {
           <span className="brand-mark" aria-hidden="true">◉</span>
           <span><b>OPEN</b>VIGIE</span>
         </a>
-        <div className="sync-state"><span aria-hidden="true" />NVD + CISA KEV en direct</div>
+        <div className="sync-state"><span aria-hidden="true" />CVE + sources éditoriales en direct</div>
         <div className="top-actions">
           <button type="button" className="icon-button" aria-label="Rechercher">⌕</button>
           <button type="button" className="icon-button" aria-label="Notifications">♢</button>
@@ -85,8 +86,15 @@ export default function Home() {
                   <button type="button" role="tab" aria-selected={cadence === id} onClick={() => selectCadence(id)} key={id}>{label}</button>
                 ))}
               </div>
-              <div className="edition-note"><span>Édition de démonstration</span><p>{issue.note}</p></div>
+              <div className="edition-note"><span>Édition vivante</span><p>{issue.note}</p></div>
             </header>
+
+            <LiveBulletinFeed cadence={cadence} key={cadence} />
+
+            <div className="editorial-divider">
+              <span>Dossiers de fond</span>
+              <p>Analyses éditoriales de démonstration · faits, incertitudes et sources séparés.</p>
+            </div>
 
             <article className="bulletin-lead glass-panel">
               <div className="lead-index">{leadStory.index}</div>

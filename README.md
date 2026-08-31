@@ -8,9 +8,10 @@ and versions that make up an infrastructure. It then correlates vendor
 advisories, public vulnerability databases, exploitation signals, defensive
 detection templates, and remediation guidance.
 
-> **Project status:** early prototype. The interface currently uses
-> demonstration data and must not be treated as a production vulnerability
-> assessment.
+> **Project status:** early public prototype. Asset monitoring and the automatic
+> source feed are functional, while the long-form editorial dossiers remain
+> demonstration content. OpenVigie must not be treated as a production
+> vulnerability assessment or as an automatically verified newsroom.
 
 ## Product principles
 
@@ -28,15 +29,25 @@ detection templates, and remediation guidance.
 
 ## The OpenVigie Bulletin
 
-The web prototype includes three editorial rhythms:
+The web application includes three editorial rhythms:
 
 - a **daily** front page for new facts and immediate operational consequences;
 - a **weekly** synthesis connecting technical and geopolitical signals;
 - a **monthly** strategic dossier covering sovereignty, surveillance, platform
   power, cyber conflict, and crypto-enabled crime.
 
-Each story exposes its sources and separates verified facts, contested or
-developing information, and editorial analysis. See
+The first section of each edition is generated from a whitelist of official and
+specialist RSS/Atom feeds. The Docker collector refreshes the feeds every three
+hours, stores article metadata in SQLite, removes tracking parameters, detects
+CVE identifiers, classifies themes, and keeps source diversity in the automatic
+ranking. It runs even when the browser is closed.
+
+OpenVigie stores only the title, author when supplied by the feed, a short
+plain-text excerpt, dates, attribution, and the original link. It does not copy
+article bodies or images and does not use generative AI to rewrite source
+claims. The daily, weekly, and monthly views use rolling 48-hour, 8-day, and
+35-day windows. The static long-form dossiers separately demonstrate how to
+distinguish verified facts, contested information, and analysis. See
 [EDITORIAL_POLICY.md](EDITORIAL_POLICY.md).
 
 ## Functional asset monitoring
@@ -67,13 +78,19 @@ OpenVigie works with the public NVD rate limit. For larger inventories, copy
 
 ## Live sources
 
-- NVD / NIST CVE API 2.0
-- CISA Known Exploited Vulnerabilities
-- linked vendor security advisories and patch references
+- NVD / NIST CVE API 2.0 and CISA Known Exploited Vulnerabilities;
+- CERT-FR / ANSSI, CISA Cybersecurity Advisories, and CERT-EU;
+- Freedom of the Press Foundation, Electronic Frontier Foundation, Access Now,
+  Citizen Lab, Amnesty Security Lab, and Forbidden Stories;
+- Microsoft Security Response Center, Google Security Blog, Mozilla Security,
+  Cloudflare, and SANS Internet Storm Center; and
+- linked vendor security advisories and patch references from matching CVEs.
+
+Each feed has a visible synchronization state. An unavailable source is marked
+as degraded without preventing the latest stored articles from being read.
 
 ## Planned enrichments
 
-- CERT-FR
 - FIRST EPSS
 - Vendor PSIRT advisories
 - Exploit-DB / SearchSploit metadata
