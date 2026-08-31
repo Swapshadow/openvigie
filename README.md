@@ -93,6 +93,9 @@ OpenVigie works with the public NVD rate limit. For larger inventories, copy
 - CERT-FR / ANSSI, CISA Cybersecurity Advisories, and CERT-EU;
 - NCSC UK, Cisco PSIRT, and Palo Alto Networks Security Advisories;
 - OpenSSF and GitHub Supply Chain Security;
+- SentinelLabs, Cisco Talos, Unit 42, CrowdStrike, ESET, Zero Day Initiative,
+  watchTowr Labs, and PortSwigger Research;
+- BleepingComputer, The Record, Krebs on Security, and Schneier on Security;
 - Freedom of the Press Foundation, Electronic Frontier Foundation, Access Now,
   Citizen Lab, Amnesty Security Lab, and Forbidden Stories;
 - Microsoft Security Response Center, Google Security Blog, Mozilla Security,
@@ -101,6 +104,11 @@ OpenVigie works with the public NVD rate limit. For larger inventories, copy
 
 Each feed has a visible synchronization state. An unavailable source is marked
 as degraded without preventing the latest stored articles from being read.
+
+The asset catalog covers network, firewall, VPN, EDR/XDR, server,
+virtualization, storage, backup, and orchestration products from more than 25
+vendors. Products without a reliable public CPE mapping use a visibly
+lower-confidence text search and always link to the vendor security portal.
 
 ## Planned enrichments
 

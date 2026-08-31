@@ -40,19 +40,15 @@ export default function Home() {
             {[
               ['bulletin', '▤', 'Le Bulletin'],
               ['assets', '◫', 'Mon parc'],
-              ['veille', '⌁', 'Veille'],
-              ['cve', '◇', 'Dossiers CVE'],
-              ['preuves', '△', 'Preuves'],
-              ['sources', '≋', 'Sources'],
             ].map(([id, icon, label]) => (
               <button
                 className="nav-item"
                 type="button"
                 aria-current={view === id ? 'page' : undefined}
                 key={id}
-                onClick={() => id === 'bulletin' || id === 'assets' ? setView(id) : undefined}
+                onClick={() => setView(id as View)}
               >
-                <span aria-hidden="true">{icon}</span><span>{label}</span>
+                <span className="nav-icon" aria-hidden="true">{icon}</span><span>{label}</span>
               </button>
             ))}
           </nav>

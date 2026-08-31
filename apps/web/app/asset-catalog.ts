@@ -128,8 +128,111 @@ export const vendorCatalog: VendorDefinition[] = [
       {
         id: 'singularity-agent', name: 'Singularity Agent', family: 'EDR', part: 'a',
         versions: ['25.1', '24.3', '24.2', '24.1', '23.4'],
-        advisoryUrl: 'https://www.sentinelone.com/labs/category/vulnerability/',
+        advisoryUrl: 'https://www.sentinelone.com/vulnerability-database/',
       },
+    ],
+  },
+  {
+    id: 'checkpoint', name: 'Check Point', short: 'CP', products: [
+      { id: 'gaia', name: 'Gaia OS / Quantum', family: 'Pare-feu', part: 'o', cpeVendor: 'checkpoint', cpeProduct: 'gaia_os', versions: ['R82.10', 'R82', 'R81.20', 'R81.10'], advisoryUrl: 'https://support.checkpoint.com/results/sk/sk165052' },
+    ],
+  },
+  {
+    id: 'sophos', name: 'Sophos', short: 'SO', products: [
+      { id: 'sfos', name: 'Sophos Firewall OS', family: 'Pare-feu', part: 'o', cpeVendor: 'sophos', cpeProduct: 'sfos', versions: ['21.5', '21.0', '20.0', '19.5'], advisoryUrl: 'https://www.sophos.com/en-us/security-advisories' },
+    ],
+  },
+  {
+    id: 'sonicwall', name: 'SonicWall', short: 'SW', products: [
+      { id: 'sonicos', name: 'SonicOS', family: 'Pare-feu & VPN', part: 'o', cpeVendor: 'sonicwall', cpeProduct: 'sonicos', versions: ['7.2', '7.1', '7.0', '6.5'], advisoryUrl: 'https://psirt.global.sonicwall.com/vuln-list' },
+      { id: 'sma', name: 'Secure Mobile Access', family: 'VPN', part: 'a', cpeVendor: 'sonicwall', cpeProduct: 'secure_mobile_access', versions: ['12.4', '10.2', '10.0'], advisoryUrl: 'https://psirt.global.sonicwall.com/vuln-list' },
+    ],
+  },
+  {
+    id: 'f5', name: 'F5 Networks', short: 'F5', products: [
+      { id: 'big-ip', name: 'BIG-IP', family: 'ADC / VPN', part: 'a', cpeVendor: 'f5', cpeProduct: 'big-ip', versions: ['17.5', '17.1', '16.1', '15.1'], advisoryUrl: 'https://my.f5.com/manage/s/article/K000137207' },
+    ],
+  },
+  {
+    id: 'ivanti', name: 'Ivanti', short: 'IV', products: [
+      { id: 'connect-secure', name: 'Connect Secure', family: 'VPN', part: 'a', cpeVendor: 'ivanti', cpeProduct: 'connect_secure', versions: ['22.8', '22.7', '22.6', '9.1'], advisoryUrl: 'https://forums.ivanti.com/s/article/Security-Advisory-Landing-Page' },
+    ],
+  },
+  {
+    id: 'citrix', name: 'Citrix', short: 'CT', products: [
+      { id: 'netscaler', name: 'NetScaler ADC / Gateway', family: 'ADC / VPN', part: 'a', cpeVendor: 'citrix', cpeProduct: 'netscaler_gateway', versions: ['14.1', '13.1', '13.0'], advisoryUrl: 'https://support.citrix.com/support-home/kbsearch?query=security%20bulletin' },
+    ],
+  },
+  {
+    id: 'microsoft', name: 'Microsoft', short: 'MS', products: [
+      { id: 'windows-server', name: 'Windows Server', family: 'Système serveur', part: 'o', cpeVendor: 'microsoft', cpeProduct: 'windows_server_2022', versions: ['2025', '2022', '2019', '2016'], advisoryUrl: 'https://msrc.microsoft.com/update-guide/' },
+      { id: 'defender-endpoint', name: 'Defender for Endpoint', family: 'EDR', part: 'a', versions: [], versionOptional: true, advisoryUrl: 'https://msrc.microsoft.com/update-guide/' },
+    ],
+  },
+  {
+    id: 'crowdstrike', name: 'CrowdStrike', short: 'CS', products: [
+      { id: 'falcon-sensor', name: 'Falcon Sensor', family: 'EDR', part: 'a', versions: ['7.24', '7.23', '7.22', '7.21'], advisoryUrl: 'https://www.crowdstrike.com/en-us/blog/category/product-tech/' },
+    ],
+  },
+  {
+    id: 'zscaler', name: 'Zscaler', short: 'ZS', products: [
+      { id: 'zia', name: 'Zscaler Internet Access', family: 'SSE / Proxy', part: 'a', versions: [], versionOptional: true, advisoryUrl: 'https://trust.zscaler.com/' },
+      { id: 'zpa', name: 'Zscaler Private Access', family: 'ZTNA', part: 'a', versions: [], versionOptional: true, advisoryUrl: 'https://trust.zscaler.com/' },
+    ],
+  },
+  {
+    id: 'ubiquiti', name: 'Ubiquiti', short: 'UI', products: [
+      { id: 'unifi', name: 'UniFi Network', family: 'Réseau & Wi-Fi', part: 'a', cpeVendor: 'ui', cpeProduct: 'unifi_network_application', versions: ['9.4', '9.3', '9.2', '8.6'], advisoryUrl: 'https://community.ui.com/releases/Security-Advisories' },
+    ],
+  },
+  {
+    id: 'dell', name: 'Dell Technologies', short: 'DE', products: [
+      { id: 'os10', name: 'SmartFabric OS10', family: 'Commutation', part: 'o', cpeVendor: 'dell', cpeProduct: 'smartfabric_os10', versions: ['10.6.0', '10.5.6', '10.5.5'], advisoryUrl: 'https://www.dell.com/support/security/en-us' },
+    ],
+  },
+  {
+    id: 'extreme', name: 'Extreme Networks', short: 'EX', products: [
+      { id: 'exos', name: 'ExtremeXOS', family: 'Commutation', part: 'o', cpeVendor: 'extremenetworks', cpeProduct: 'extremexos', versions: ['32.7', '32.6', '31.7', '30.7'], advisoryUrl: 'https://www.extremenetworks.com/support/security-advisories' },
+    ],
+  },
+  {
+    id: 'netapp', name: 'NetApp', short: 'NA', products: [
+      { id: 'ontap', name: 'ONTAP', family: 'Stockage', part: 'o', cpeVendor: 'netapp', cpeProduct: 'ontap', versions: ['9.16.1', '9.15.1', '9.14.1', '9.13.1'], advisoryUrl: 'https://security.netapp.com/advisory/' },
+    ],
+  },
+  {
+    id: 'synology', name: 'Synology', short: 'SY', products: [
+      { id: 'dsm', name: 'DiskStation Manager', family: 'NAS', part: 'o', cpeVendor: 'synology', cpeProduct: 'diskstation_manager', versions: ['7.2.2', '7.2.1', '7.1.1'], advisoryUrl: 'https://www.synology.com/security/advisory' },
+    ],
+  },
+  {
+    id: 'qnap', name: 'QNAP', short: 'QN', products: [
+      { id: 'qts', name: 'QTS', family: 'NAS', part: 'o', cpeVendor: 'qnap', cpeProduct: 'qts', versions: ['5.2', '5.1', '5.0'], advisoryUrl: 'https://www.qnap.com/en/security-advisories' },
+    ],
+  },
+  {
+    id: 'veeam', name: 'Veeam', short: 'VB', products: [
+      { id: 'backup-replication', name: 'Backup & Replication', family: 'Sauvegarde', part: 'a', versions: ['13', '12.3', '12.2', '12.1'], advisoryUrl: 'https://www.veeam.com/kb4649' },
+    ],
+  },
+  {
+    id: 'proxmox', name: 'Proxmox', short: 'PX', products: [
+      { id: 'pve', name: 'Proxmox VE', family: 'Virtualisation', part: 'o', cpeVendor: 'proxmox', cpeProduct: 'virtual_environment', versions: ['9.0', '8.4', '8.3', '8.2'], advisoryUrl: 'https://www.proxmox.com/en/services/security' },
+    ],
+  },
+  {
+    id: 'kubernetes', name: 'Kubernetes', short: 'K8', products: [
+      { id: 'kubernetes', name: 'Kubernetes', family: 'Orchestration', part: 'a', cpeVendor: 'kubernetes', cpeProduct: 'kubernetes', versions: ['1.34', '1.33', '1.32', '1.31'], advisoryUrl: 'https://kubernetes.io/docs/reference/issues-security/official-cve-feed/' },
+    ],
+  },
+  {
+    id: 'redhat', name: 'Red Hat', short: 'RH', products: [
+      { id: 'rhel', name: 'Red Hat Enterprise Linux', family: 'Système serveur', part: 'o', cpeVendor: 'redhat', cpeProduct: 'enterprise_linux', versions: ['10.0', '9.6', '9.5', '8.10'], advisoryUrl: 'https://access.redhat.com/security/security-updates/' },
+    ],
+  },
+  {
+    id: 'canonical', name: 'Canonical Ubuntu', short: 'UB', products: [
+      { id: 'ubuntu', name: 'Ubuntu Server', family: 'Système serveur', part: 'o', cpeVendor: 'canonical', cpeProduct: 'ubuntu_linux', versions: ['26.04', '24.04', '22.04', '20.04'], advisoryUrl: 'https://ubuntu.com/security/notices' },
     ],
   },
   {
