@@ -1,6 +1,24 @@
 name: openvigie
 
 services:
+  collector:
+    build:
+      context: ./services/collector
+      dockerfile: Dockerfile
+    init: true
+    environment:
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      OPENVIGIE_DB_PATH: /data/openvigie.db
+      OPENVIGIE_REFRESH_SECONDS: 900
+    volumes:
+      - openvigie_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   web:
     build:
       context: ./apps/web
@@ -10,4 +28,12 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      OPENVIGIE_COLLECTOR_URL: http://collector:8787
+    depends_on:
+      collector:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  openvigie_data:

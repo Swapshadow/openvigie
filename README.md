@@ -39,11 +39,41 @@ Each story exposes its sources and separates verified facts, contested or
 developing information, and editorial analysis. See
 [EDITORIAL_POLICY.md](EDITORIAL_POLICY.md).
 
-## Planned sources
+## Functional asset monitoring
+
+The **My assets** workspace now lets users:
+
+- add a vendor, product, installed version, local label, and exposure context;
+- keep that inventory locally in the browser, without sending IP addresses or
+  credentials;
+- query NVD from the OpenVigie server using an exact CPE and version whenever a
+  reliable mapping is available;
+- correlate matching CVEs with the CISA Known Exploited Vulnerabilities catalog;
+- filter by severity, exploitation status, CVE identifier, or description;
+- open primary vendor advisories, patches, mitigations, and NVD evidence; and
+- refresh automatically every 15 minutes.
+
+With Docker, a dedicated collector stores normalized snapshots in a SQLite
+volume and continues refreshing monitored product/version queries while the
+browser tab is closed. If NVD or CISA is temporarily unavailable, OpenVigie can
+serve the latest known snapshot and mark it as stale.
+
+The interface labels text-search fallback matches as lower confidence. Always
+confirm affected and fixed version ranges in the linked vendor advisory before
+changing production infrastructure.
+
+OpenVigie works with the public NVD rate limit. For larger inventories, copy
+`.env.example` to `.env`, add an optional `NVD_API_KEY`, and restart Docker.
+
+## Live sources
+
+- NVD / NIST CVE API 2.0
+- CISA Known Exploited Vulnerabilities
+- linked vendor security advisories and patch references
+
+## Planned enrichments
 
 - CERT-FR
-- NVD and CVE records
-- CISA Known Exploited Vulnerabilities
 - FIRST EPSS
 - Vendor PSIRT advisories
 - Exploit-DB / SearchSploit metadata
@@ -54,8 +84,10 @@ developing information, and editorial analysis. See
 
 ```text
 openvigie/
-└── apps/
-    └── web/        Miami-inspired web interface and first product prototype
+├── apps/
+│   └── web/              Miami-inspired interface and API gateway
+└── services/
+    └── collector/        Scheduled NVD/CISA collection and SQLite cache
 ```
 
 ## Run the web prototype
