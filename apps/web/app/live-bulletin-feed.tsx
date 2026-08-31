@@ -87,7 +87,7 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
           <span>{data?.period.label ?? 'Synchronisation des flux en cours'}</span>
         </div>
         <div className="feed-health">
-          <strong><i data-state={degradedSources ? 'degraded' : 'online'} />{onlineSources}/{data?.sources.length ?? 14} flux actifs</strong>
+          <strong><i data-state={degradedSources ? 'degraded' : 'online'} />{data ? `${onlineSources}/${data.sources.length} flux actifs` : 'Synchronisation des flux'}</strong>
           <span>{data ? `Sélection actualisée le ${formatDate(data.generatedAt, true)}` : 'Première synchronisation en cours'}</span>
         </div>
       </header>

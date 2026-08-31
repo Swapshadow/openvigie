@@ -72,6 +72,13 @@ FEED_SOURCES = (
         "priority": 10, "filter": "all", "license": "Source publique attribuée",
     },
     {
+        "id": "ncsc-uk", "name": "NCSC UK",
+        "feed_url": "https://www.ncsc.gov.uk/api/1/services/v1/report-rss-feed.xml",
+        "homepage": "https://www.ncsc.gov.uk/section/keep-up-to-date/reports",
+        "kind": "Autorité nationale", "default_category": "Cyberconflits & menaces",
+        "priority": 9, "filter": "all", "license": "Source publique attribuée",
+    },
+    {
         "id": "amnesty-security-lab", "name": "Amnesty Security Lab",
         "feed_url": "https://securitylab.amnesty.org/latest/feed/", "homepage": "https://securitylab.amnesty.org/",
         "kind": "Recherche forensique", "default_category": "Surveillance & spyware",
@@ -89,6 +96,33 @@ FEED_SOURCES = (
         "kind": "PSIRT éditeur", "default_category": "Vulnérabilités & correctifs",
         "priority": 9, "filter": "all", "max_bytes": 3_000_000,
         "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "cisco-psirt", "name": "Cisco PSIRT",
+        "feed_url": "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml",
+        "homepage": "https://sec.cloudapps.cisco.com/security/center/publicationListing.x",
+        "kind": "PSIRT éditeur", "default_category": "Vulnérabilités & correctifs",
+        "priority": 10, "filter": "all", "license": "RSS Cisco : extrait court et attribution",
+    },
+    {
+        "id": "palo-alto-psirt", "name": "Palo Alto Networks Security Advisories",
+        "feed_url": "https://security.paloaltonetworks.com/rss.xml",
+        "homepage": "https://security.paloaltonetworks.com/",
+        "kind": "PSIRT éditeur", "default_category": "Vulnérabilités & correctifs",
+        "priority": 10, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "openssf", "name": "OpenSSF",
+        "feed_url": "https://openssf.org/feed/", "homepage": "https://openssf.org/",
+        "kind": "Sécurité open source", "default_category": "Supply chain logicielle",
+        "priority": 9, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "github-supply-chain", "name": "GitHub Supply Chain Security",
+        "feed_url": "https://github.blog/security/supply-chain-security/feed/",
+        "homepage": "https://github.blog/security/supply-chain-security/",
+        "kind": "Sécurité de la chaîne logicielle", "default_category": "Supply chain logicielle",
+        "priority": 8, "filter": "all", "license": "Titre et extrait court avec attribution",
     },
     {
         "id": "google-security", "name": "Google Security Blog",
@@ -123,6 +157,8 @@ FEED_SOURCES = (
 )
 
 CATEGORY_RULES = (
+    ("Supply chain logicielle", ("supply chain", "software supply chain", "dependency", "dependencies", "malicious package", "package registry", "npm", "pypi", "rubygems", "dependency confusion", "typosquatting", "sbom", "slsa", "sigstore", "provenance", "ci/cd", "github actions", "build system", "artifact signing", "open source security")),
+    ("VPN & accès distant", ("vpn", "ssl-vpn", "ssl vpn", "ipsec", "remote access", "remote desktop gateway", "secure client", "anyconnect", "globalprotect", "connect secure", "pulse secure", "netscaler gateway", "citrix gateway", "secure mobile access", "sonicwall sma")),
     ("Surveillance & spyware", ("pegasus", "spyware", "stalkerware", "mercenary surveillance", "surveillance", "zero-click", "zero click", "nso group", "forensic")),
     ("Vulnérabilités & correctifs", ("cve-", "vulnerability", "vulnerabilities", "vulnerabilite", "vulnerabilites", "security advisory", "security update", "patch", "correctif", "zero-day", "zero day", "exploit", "rce", "critical flaw")),
     ("Cyberconflits & menaces", ("apt", "state-backed", "nation-state", "cyberwar", "cyber war", "cyber conflict", "threat actor", "espionage", "ukraine", "russia", "iran", "north korea", "china-linked", "disinformation")),
@@ -391,7 +427,9 @@ def parse_published_at(value: str, fallback: int) -> int:
 
 def parse_feed(data: bytes, source: dict, fetched_at: int) -> list[dict]:
     upper_prefix = data[:4096].upper()
-    if b"<!DOCTYPE" in upper_prefix or b"<!ENTITY" in upper_prefix:
+    root_match = re.search(br"<(?:[A-Z0-9_-]+:)?(?:RSS|FEED|RDF)\b", upper_prefix)
+    preamble = upper_prefix[:root_match.start()] if root_match else upper_prefix
+    if b"<!DOCTYPE" in preamble or b"<!ENTITY" in preamble:
         raise RuntimeError("Flux XML non sûr")
     try:
         root = ET.fromstring(data)

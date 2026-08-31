@@ -36,6 +36,12 @@ The web application includes three editorial rhythms:
 - a **monthly** strategic dossier covering sovereignty, surveillance, platform
   power, cyber conflict, and crypto-enabled crime.
 
+Two operational desks make the bulletin easier to use during infrastructure
+watch: **Software supply chain** covers malicious packages, dependency risks,
+SBOM, build provenance, and artifact signing; **VPN & remote access** covers
+edge appliances, SSL-VPN/IPsec gateways, remote clients, and actively exploited
+perimeter vulnerabilities.
+
 The first section of each edition is generated from a whitelist of official and
 specialist RSS/Atom feeds. The Docker collector refreshes the feeds every three
 hours, stores article metadata in SQLite, removes tracking parameters, detects
@@ -80,6 +86,8 @@ OpenVigie works with the public NVD rate limit. For larger inventories, copy
 
 - NVD / NIST CVE API 2.0 and CISA Known Exploited Vulnerabilities;
 - CERT-FR / ANSSI, CISA Cybersecurity Advisories, and CERT-EU;
+- NCSC UK, Cisco PSIRT, and Palo Alto Networks Security Advisories;
+- OpenSSF and GitHub Supply Chain Security;
 - Freedom of the Press Foundation, Electronic Frontier Foundation, Access Now,
   Citizen Lab, Amnesty Security Lab, and Forbidden Stories;
 - Microsoft Security Response Center, Google Security Blog, Mozilla Security,
@@ -92,7 +100,7 @@ as degraded without preventing the latest stored articles from being read.
 ## Planned enrichments
 
 - FIRST EPSS
-- Vendor PSIRT advisories
+- Additional vendor PSIRT advisories
 - Exploit-DB / SearchSploit metadata
 - Metasploit module metadata
 - Nuclei template metadata
