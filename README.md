@@ -26,6 +26,19 @@ detection templates, and remediation guidance.
 - **Open:** auditable collectors, transparent matching rules, and community
   contributions.
 
+## The OpenVigie Bulletin
+
+The web prototype includes three editorial rhythms:
+
+- a **daily** front page for new facts and immediate operational consequences;
+- a **weekly** synthesis connecting technical and geopolitical signals;
+- a **monthly** strategic dossier covering sovereignty, surveillance, platform
+  power, cyber conflict, and crypto-enabled crime.
+
+Each story exposes its sources and separates verified facts, contested or
+developing information, and editorial analysis. See
+[EDITORIAL_POLICY.md](EDITORIAL_POLICY.md).
+
 ## Planned sources
 
 - CERT-FR

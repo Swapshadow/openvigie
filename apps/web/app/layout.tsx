@@ -6,13 +6,13 @@ const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'OpenVigie — Veille de vulnérabilités centrée sur votre parc',
-  description: 'Plateforme open source de veille technologique et cybersécurité, contextualisée selon vos équipements et leurs versions.',
+  title: 'OpenVigie — Veille cyber, vulnérabilités et bulletin stratégique',
+  description: 'Plateforme open source de veille cyber : vulnérabilités contextualisées, bulletin quotidien, synthèse hebdomadaire et dossier stratégique mensuel.',
   openGraph: {
     type: 'website',
     locale: 'fr_FR',
     title: 'OpenVigie',
-    description: 'La veille cyber centrée sur votre parc.',
+    description: 'La veille cyber centrée sur votre parc et les enjeux stratégiques.',
     images: [
       {
         url: 'https://raw.githubusercontent.com/Swapshadow/openvigie/main/apps/web/public/og.png',
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'OpenVigie',
-    description: 'La veille cyber centrée sur votre parc.',
+    description: 'La veille cyber centrée sur votre parc et les enjeux stratégiques.',
     images: ['https://raw.githubusercontent.com/Swapshadow/openvigie/main/apps/web/public/og.png'],
   },
 };
