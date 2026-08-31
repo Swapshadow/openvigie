@@ -2,27 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Cadence } from './bulletin-data';
-import type { LiveBulletinResponse } from './bulletin-types';
+import type { LiveArticle, LiveBulletinResponse } from './bulletin-types';
 
 const REFRESH_INTERVAL = 30 * 60 * 1000;
+const FRONT_PAGE = '__front__';
 
 function formatDate(value: string | null, includeTime = false) {
   if (!value) return 'Date non fournie';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Date non fournie';
-  return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'medium',
-    ...(includeTime ? { timeStyle: 'short' as const } : {}),
-  }).format(date);
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', ...(includeTime ? { timeStyle: 'short' as const } : {}) }).format(date);
 }
 
 function cadenceLabel(cadence: Cadence) {
-  return { daily: 'Fil quotidien', weekly: 'Revue hebdomadaire', monthly: 'Revue mensuelle' }[cadence];
+  return { daily: 'Le journal du jour', weekly: 'La revue de la semaine', monthly: 'Le mensuel' }[cadence];
+}
+
+function StoryMeta({ article }: { article: LiveArticle }) {
+  return <div className="automatic-meta"><span>{article.category}</span><strong>{article.source.name}</strong></div>;
 }
 
 export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
   const [data, setData] = useState<LiveBulletinResponse | null>(null);
-  const [category, setCategory] = useState('');
+  const [page, setPage] = useState(FRONT_PAGE);
+  const [loadedPage, setLoadedPage] = useState(FRONT_PAGE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestSequence = useRef(0);
@@ -31,14 +34,15 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
     const requestId = ++requestSequence.current;
     setLoading(true);
     setError('');
-    const parameters = new URLSearchParams({ cadence, limit: cadence === 'daily' ? '18' : '24' });
-    if (category) parameters.set('category', category);
+    const parameters = new URLSearchParams({ cadence, limit: page === FRONT_PAGE ? '18' : '24' });
+    if (page !== FRONT_PAGE) parameters.set('category', page);
     try {
       const response = await fetch(`/api/articles?${parameters}`, { cache: 'no-store', signal });
       const payload = await response.json() as LiveBulletinResponse & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? 'Le bulletin automatique est indisponible.');
       if (requestId !== requestSequence.current) return;
       setData(payload);
+      setLoadedPage(page);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === 'AbortError') return;
       if (requestId !== requestSequence.current) return;
@@ -46,7 +50,7 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
     } finally {
       if (!signal?.aborted && requestId === requestSequence.current) setLoading(false);
     }
-  }, [cadence, category]);
+  }, [cadence, page]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -60,124 +64,60 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
     };
   }, [load]);
 
-  useEffect(() => {
-    if (!loading && !error && data?.articles.length === 0) {
-      const retry = window.setTimeout(() => void load(), 20_000);
-      return () => window.clearTimeout(retry);
-    }
-  }, [data, error, load, loading]);
+  const pages = useMemo(() => [FRONT_PAGE, ...(data?.categories.map((item) => item.name) ?? [])], [data]);
+  const pageIndex = Math.max(0, pages.indexOf(page));
+  const onlineSources = data?.sources.filter((source) => source.status === 'online').length ?? 0;
+  const degradedSources = data?.sources.filter((source) => source.status === 'degraded').length ?? 0;
+  const pageReady = loadedPage === page;
+  const lead = pageReady ? data?.articles[0] : undefined;
+  const frontSecondary = pageReady ? data?.articles.slice(1, 3) ?? [] : [];
+  const frontBriefs = pageReady ? data?.articles.slice(3, 5) ?? [] : [];
+  const categoryArticles = pageReady ? data?.articles.slice(0, 12) ?? [] : [];
 
-  const onlineSources = useMemo(
-    () => data?.sources.filter((source) => source.status === 'online').length ?? 0,
-    [data],
-  );
-  const degradedSources = useMemo(
-    () => data?.sources.filter((source) => source.status === 'degraded').length ?? 0,
-    [data],
-  );
-  const lead = data?.articles[0];
-  const remaining = data?.articles.slice(1) ?? [];
+  const turnPage = (direction: -1 | 1) => {
+    const nextIndex = Math.min(pages.length - 1, Math.max(0, pageIndex + direction));
+    setPage(pages[nextIndex]);
+    document.querySelector('.live-newsroom')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <section className="live-newsroom glass-panel" aria-live="polite">
-      <header className="live-newsroom-header">
-        <div>
-          <p>Sources ouvertes · collecte continue</p>
-          <h2>{cadenceLabel(cadence)}</h2>
-          <span>{data?.period.label ?? 'Synchronisation des flux en cours'}</span>
-        </div>
-        <div className="feed-health">
-          <strong><i data-state={degradedSources ? 'degraded' : 'online'} />{data ? `${onlineSources}/${data.sources.length} flux actifs` : 'Synchronisation des flux'}</strong>
-          <span>{data ? `Sélection actualisée le ${formatDate(data.generatedAt, true)}` : 'Première synchronisation en cours'}</span>
-        </div>
+      <header className="live-newsroom-header newspaper-header">
+        <div><p>Sources ouvertes · collecte continue</p><h2>{page === FRONT_PAGE ? cadenceLabel(cadence) : page}</h2><span>{data?.period.label ?? 'Synchronisation des flux en cours'}</span></div>
+        <div className="newspaper-folio"><strong>PAGE {String(pageIndex + 1).padStart(2, '0')}</strong><span>SUR {String(Math.max(1, pages.length)).padStart(2, '0')}</span></div>
+        <div className="feed-health"><strong><i data-state={degradedSources ? 'degraded' : 'online'} />{data ? `${onlineSources}/${data.sources.length} flux actifs` : 'Synchronisation des flux'}</strong><span>{data ? `Actualisé le ${formatDate(data.generatedAt, true)}` : 'Première synchronisation en cours'}</span></div>
       </header>
 
       {data?.categories.length ? (
-        <div className="news-filters" aria-label="Filtrer les articles par thème">
-          <button type="button" aria-pressed={!category} onClick={() => setCategory('')}>Tout</button>
-          {data.categories.map((item) => (
-            <button type="button" aria-pressed={category === item.name} onClick={() => setCategory(item.name)} key={item.name}>
-              {item.name} <span>{item.count}</span>
-            </button>
-          ))}
+        <nav className="newspaper-sections" aria-label="Pages du bulletin">
+          <button type="button" aria-current={page === FRONT_PAGE ? 'page' : undefined} onClick={() => setPage(FRONT_PAGE)}>La Une</button>
+          {data.categories.map((item) => <button type="button" aria-current={page === item.name ? 'page' : undefined} onClick={() => setPage(item.name)} key={item.name}>{item.name} <span>{item.count}</span></button>)}
+        </nav>
+      ) : null}
+
+      {error ? <div className="news-message news-error"><span aria-hidden="true">△</span><div><strong>Le journal n’a pas pu être chargé</strong><p>{error}</p></div><button type="button" onClick={() => void load()}>Réessayer</button></div> : null}
+      {loading && (!data || !pageReady) ? <div className="news-message news-loading"><i /><div><strong>OpenVigie compose l’édition</strong><p>Les annonces majeures sont classées à partir des sources officielles.</p></div></div> : null}
+      {!loading && !error && !lead ? <div className="news-message"><span aria-hidden="true">⌁</span><div><strong>Aucun article dans cette page</strong><p>Le collecteur poursuit sa synchronisation en arrière-plan.</p></div></div> : null}
+
+      {lead && page === FRONT_PAGE ? (
+        <div className="front-page">
+          {data?.archiveFallback ? <p className="archive-notice">Aucune publication dans la période choisie : les dernières archives sont affichées.</p> : null}
+          <div className="front-page-banner"><span>LA UNE</span><p>Les cinq annonces prioritaires de l’édition · fraîcheur, autorité de la source et signaux CVE</p></div>
+          <article className="front-lead"><StoryMeta article={lead} /><h3><a href={lead.url} target="_blank" rel="noreferrer">{lead.title}</a></h3>{lead.excerpt ? <p>{lead.excerpt}</p> : null}<footer><span>{formatDate(lead.publishedAt)}{lead.author ? ` · ${lead.author}` : ''}</span><a href={lead.url} target="_blank" rel="noreferrer">Lire l’annonce originale ↗</a></footer></article>
+          <div className="front-secondary">{frontSecondary.map((article, index) => <article key={article.id}><b>0{index + 2}</b><StoryMeta article={article} /><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3>{article.excerpt ? <p>{article.excerpt}</p> : null}<a href={article.url} target="_blank" rel="noreferrer">Source originale ↗</a></article>)}</div>
+          {frontBriefs.length ? <div className="front-briefs"><strong>EN BREF</strong>{frontBriefs.map((article) => <article key={article.id}><span>{article.category}</span><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3><small>{article.source.name}</small></article>)}</div> : null}
         </div>
       ) : null}
 
-      {error ? (
-        <div className="news-message news-error">
-          <span aria-hidden="true">△</span>
-          <div><strong>Le fil n’a pas pu être chargé</strong><p>{error}</p></div>
-          <button type="button" onClick={() => void load()}>Réessayer</button>
+      {lead && page !== FRONT_PAGE ? (
+        <div className="section-page">
+          <header><span>RUBRIQUE</span><h3>{page}</h3><p>{categoryArticles.length} publication{categoryArticles.length > 1 ? 's' : ''} sélectionnée{categoryArticles.length > 1 ? 's' : ''} dans cette page.</p></header>
+          <article className="section-lead"><StoryMeta article={lead} /><h3><a href={lead.url} target="_blank" rel="noreferrer">{lead.title}</a></h3>{lead.excerpt ? <p>{lead.excerpt}</p> : null}<footer><span>{formatDate(lead.publishedAt)}</span><a href={lead.url} target="_blank" rel="noreferrer">Lire chez {lead.source.name} ↗</a></footer></article>
+          <div className="section-columns">{categoryArticles.slice(1).map((article, index) => <article key={article.id}><b>{String(index + 2).padStart(2, '0')}</b><StoryMeta article={article} /><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3>{article.excerpt ? <p>{article.excerpt}</p> : null}<footer><span>{formatDate(article.publishedAt)}</span><a href={article.url} target="_blank" rel="noreferrer">Source ↗</a></footer></article>)}</div>
         </div>
       ) : null}
 
-      {loading && !data ? (
-        <div className="news-message news-loading"><i /><div><strong>OpenVigie interroge les sources</strong><p>Les premiers articles arrivent généralement en moins d’une minute.</p></div></div>
-      ) : null}
-
-      {!loading && !error && !lead ? (
-        <div className="news-message"><span aria-hidden="true">⌁</span><div><strong>Aucun article dans cette période</strong><p>Le collecteur poursuit sa première synchronisation en arrière-plan.</p></div></div>
-      ) : null}
-
-      {lead ? (
-        <>
-          {data.archiveFallback ? <p className="archive-notice">Aucun article dans la période choisie : les dernières publications archivées sont affichées.</p> : null}
-          <article className="automatic-lead">
-            <div className="automatic-lead-index">UNE</div>
-            <div>
-              <div className="automatic-meta"><span>{lead.category}</span><strong>{lead.source.name}</strong></div>
-              <h3><a href={lead.url} target="_blank" rel="noreferrer">{lead.title}</a></h3>
-              {lead.excerpt ? <p>{lead.excerpt}</p> : null}
-              <div className="automatic-byline">
-                <span>{formatDate(lead.publishedAt)}{lead.author ? ` · ${lead.author}` : ''}</span>
-                {lead.cves.map((cve) => <b key={cve}>{cve}</b>)}
-              </div>
-              <a className="original-link" href={lead.url} target="_blank" rel="noreferrer">Lire chez {lead.source.name} ↗</a>
-            </div>
-            <aside>
-              <span>Nature de la source</span>
-              <strong>{lead.source.kind}</strong>
-              <p>Article original, attribution et lien conservés. OpenVigie ne copie pas le corps de la publication.</p>
-            </aside>
-          </article>
-
-          <div className="automatic-grid">
-            {remaining.map((article, index) => (
-              <article className="automatic-card" key={article.id}>
-                <div className="automatic-card-index">{String(index + 2).padStart(2, '0')}</div>
-                <div className="automatic-meta"><span>{article.category}</span><strong>{article.source.name}</strong></div>
-                <h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3>
-                {article.excerpt ? <p>{article.excerpt}</p> : null}
-                <footer>
-                  <span>{formatDate(article.publishedAt)}</span>
-                  {article.cves.length ? <b>{article.cves.slice(0, 2).join(' · ')}</b> : null}
-                  <a href={article.url} target="_blank" rel="noreferrer" aria-label={`Lire l’article original chez ${article.source.name}`}>Source ↗</a>
-                </footer>
-              </article>
-            ))}
-          </div>
-        </>
-      ) : null}
-
-      {data ? (
-        <footer className="automatic-footer">
-          <div>
-            <strong>Classement automatisé · pas une validation éditoriale</strong>
-            <span>{data.ranking.method}</span>
-            <span>Aucune IA ne réécrit, ne traduit ou ne complète les faits des sources.</span>
-          </div>
-          <details>
-            <summary>{data.sources.length} sources suivies · {degradedSources ? `${degradedSources} dégradée(s)` : 'toutes disponibles'}</summary>
-            <div className="feed-source-list">
-              {data.sources.map((source) => (
-                <a href={source.homepage} target="_blank" rel="noreferrer" key={source.id}>
-                  <i data-state={source.status} /><span><strong>{source.name}</strong><small>{source.kind}</small></span>
-                </a>
-              ))}
-            </div>
-          </details>
-        </footer>
-      ) : null}
+      {data ? <><nav className="page-turner" aria-label="Tourner les pages du bulletin"><button type="button" disabled={pageIndex === 0} onClick={() => turnPage(-1)}>← Page précédente</button><span>{page === FRONT_PAGE ? 'La Une' : page}</span><button type="button" disabled={pageIndex === pages.length - 1} onClick={() => turnPage(1)}>Page suivante →</button></nav><footer className="automatic-footer"><div><strong>Sélection automatisée · pas une validation éditoriale</strong><span>{data.ranking.method}</span><span>Aucune IA ne réécrit ou ne complète les faits des sources.</span></div><details><summary>{data.sources.length} sources suivies · {degradedSources ? `${degradedSources} dégradée(s)` : 'toutes disponibles'}</summary><div className="feed-source-list">{data.sources.map((source) => <a href={source.homepage} target="_blank" rel="noreferrer" key={source.id}><i data-state={source.status} /><span><strong>{source.name}</strong><small>{source.kind}</small></span></a>)}</div></details></footer></> : null}
     </section>
   );
 }

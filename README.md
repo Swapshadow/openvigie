@@ -36,6 +36,11 @@ The web application includes three editorial rhythms:
 - a **monthly** strategic dossier covering sovereignty, surveillance, platform
   power, cyber conflict, and crypto-enabled crime.
 
+Each edition opens as a newspaper: the front page is limited to five priority
+announcements, while every detected topic has its own page with previous/next
+page controls. Opening the application now lands directly on the bulletin; the
+asset inventory remains available from the main navigation.
+
 Two operational desks make the bulletin easier to use during infrastructure
 watch: **Software supply chain** covers malicious packages, dependency risks,
 SBOM, build provenance, and artifact signing; **VPN & remote access** covers

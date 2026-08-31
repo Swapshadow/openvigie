@@ -1,23 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { issues, stories, type Cadence } from './bulletin-data';
+import { issues, type Cadence } from './bulletin-data';
 import InventoryWorkspace from './inventory-workspace';
 import LiveBulletinFeed from './live-bulletin-feed';
 
 type View = 'bulletin' | 'assets';
 
 export default function Home() {
-  const [view, setView] = useState<View>('assets');
+  const [view, setView] = useState<View>('bulletin');
   const [cadence, setCadence] = useState<Cadence>('daily');
-  const [selectedStoryId, setSelectedStoryId] = useState(issues.daily.lead);
   const issue = issues[cadence];
-  const leadStory = stories[issue.lead];
-  const selectedStory = stories[selectedStoryId] ?? leadStory;
 
   const selectCadence = (nextCadence: Cadence) => {
     setCadence(nextCadence);
-    setSelectedStoryId(issues[nextCadence].lead);
   };
 
   return (
@@ -90,90 +86,6 @@ export default function Home() {
             </header>
 
             <LiveBulletinFeed cadence={cadence} key={cadence} />
-
-            <div className="editorial-divider">
-              <span>Dossiers de fond</span>
-              <p>Analyses éditoriales de démonstration · faits, incertitudes et sources séparés.</p>
-            </div>
-
-            <article className="bulletin-lead glass-panel">
-              <div className="lead-index">{leadStory.index}</div>
-              <div>
-                <div className="story-meta"><span>{leadStory.section}</span><strong data-tone={leadStory.tone}>{leadStory.status}</strong></div>
-                <h2>{leadStory.title}</h2>
-                <p>{leadStory.deck}</p>
-                <div className="source-links" aria-label="Sources de l’article">
-                  {leadStory.sources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.label}>{source.label} ↗</a>)}
-                </div>
-                <button className="read-dossier" type="button" onClick={() => setSelectedStoryId(leadStory.id)}>Lire le dossier</button>
-              </div>
-              <aside>
-                <span>Pourquoi c’est important</span>
-                <p>{leadStory.why}</p>
-              </aside>
-            </article>
-
-            <div className="bulletin-columns">
-              {issue.sides.map((storyId) => {
-                const story = stories[storyId];
-                return (
-                  <button className="story-card glass-panel" type="button" aria-pressed={selectedStoryId === story.id} onClick={() => setSelectedStoryId(story.id)} key={story.id}>
-                    <span className="story-number">{story.index}</span>
-                    <span className="story-section">{story.section}</span>
-                    <strong>{story.title}</strong>
-                    <span className="story-deck">{story.deck}</span>
-                    <em data-tone={story.tone}>{story.status}</em>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="briefing-strip glass-panel" aria-label="À suivre également">
-              <div className="briefing-label">À suivre</div>
-              {issue.briefs.map((storyId) => {
-                const story = stories[storyId];
-                return (
-                  <button type="button" onClick={() => setSelectedStoryId(story.id)} key={story.id}>
-                    <span>{story.section}</span><strong>{story.title}</strong>
-                  </button>
-                );
-              })}
-            </div>
-
-            <article className="story-dossier glass-panel" aria-live="polite">
-              <header>
-                <div>
-                  <p>{selectedStory.section} · {selectedStory.index}</p>
-                  <h2>{selectedStory.title}</h2>
-                </div>
-                <span className="verification-status" data-tone={selectedStory.tone}>{selectedStory.status}</span>
-              </header>
-              <div className="story-dossier-grid">
-                <section>
-                  <h3>Ce qui est établi</h3>
-                  <ul>{selectedStory.facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>
-                </section>
-                <section>
-                  <h3>Ce que l’on surveille</h3>
-                  <ul>{selectedStory.watch.map((signal) => <li key={signal}>{signal}</li>)}</ul>
-                </section>
-                <aside>
-                  <h3>Sources & nature</h3>
-                  {selectedStory.sources.map((source) => (
-                    <a href={source.url} target="_blank" rel="noreferrer" key={source.label}>
-                      <span>{source.kind}</span><strong>{source.label} ↗</strong>
-                    </a>
-                  ))}
-                </aside>
-              </div>
-            </article>
-
-            <footer className="editorial-standard glass-panel">
-              <strong>Le pacte éditorial OpenVigie</strong>
-              <span><i className="dot verified" /> Confirmé : sources identifiées et concordantes</span>
-              <span><i className="dot contested" /> Contesté : positions attribuées, désaccord visible</span>
-              <span><i className="dot analysis" /> Analyse : interprétation explicitement séparée des faits</span>
-            </footer>
           </section>
         ) : (
           <InventoryWorkspace />
