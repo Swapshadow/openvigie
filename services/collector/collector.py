@@ -7,6 +7,7 @@ import html
 import json
 import os
 import re
+from difflib import SequenceMatcher
 import sqlite3
 import threading
 import time
@@ -35,6 +36,38 @@ CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
 TRACKING_PARAMETERS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
 
 FEED_SOURCES = (
+    {
+        "id": "anssi-actualites", "name": "ANSSI · Actualités",
+        "feed_url": "https://cyber.gouv.fr/actualites/rss/", "homepage": "https://cyber.gouv.fr/actualites/",
+        "kind": "Autorité nationale · réglementation", "default_category": "Cybersécurité",
+        "priority": 10, "filter": "regulatory", "license": "Source publique attribuée",
+    },
+    {
+        "id": "eu-digital-strategy", "name": "Commission européenne · Numérique",
+        "feed_url": "https://digital-strategy.ec.europa.eu/en/rss.xml", "homepage": "https://digital-strategy.ec.europa.eu/en/news",
+        "kind": "Institution européenne · réglementation", "default_category": "Cybersécurité",
+        "priority": 10, "filter": "regulatory", "license": "Source institutionnelle attribuée",
+    },
+    {
+        "id": "french-breaches", "name": "FrenchBreaches",
+        "feed_url": "https://frenchbreaches.com/feed.xml", "homepage": "https://frenchbreaches.com/",
+        "kind": "Fuites de données · France", "default_category": "Fuites de données · France",
+        "priority": 10, "filter": "all", "fixed_category": True,
+        "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "bonjour-la-fuite", "name": "BonjourLaFuite",
+        "feed_url": "https://bonjourlafuite.eu.org/feed.xml", "homepage": "https://bonjourlafuite.eu.org/",
+        "kind": "Registre citoyen de fuites · France", "default_category": "Fuites de données · France",
+        "priority": 10, "filter": "all", "fixed_category": True,
+        "license": "Titre et données concernées avec attribution",
+    },
+    {
+        "id": "french-breaches-blog", "name": "FrenchBreaches · International",
+        "feed_url": "https://frenchbreaches.com/blog/feed.xml", "homepage": "https://frenchbreaches.com/blog/",
+        "kind": "Actualité des fuites internationales", "default_category": "Cybersécurité",
+        "priority": 9, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
     {
         "id": "freedom-press", "name": "Freedom of the Press Foundation",
         "feed_url": "https://freedom.press/news/feed/", "homepage": "https://freedom.press/",
@@ -241,6 +274,8 @@ FEED_SOURCES = (
 )
 
 CATEGORY_RULES = (
+    ("Réglementation & conformité", ("iso 27001", "iso/iec 27001", "iso27001", "nis 2", "nis2", "directive nis", "dora", "digital operational resilience act", "cyber resilience act", " ai act", "artificial intelligence act", "digital services act", "dsa enforcement", "rgpd", "gdpr", "reglementation cyber", "cybersecurity regulation", "conformite cyber", "compliance requirement", "implementing regulation", "certification scheme")),
+    ("Fuites de données · International", ("data breach", "data leak", "breach exposed", "records exposed", "stolen data", "fuite de donnees", "vol de donnees", "donnees volees", "donnees exposees")),
     ("Supply chain logicielle", ("supply chain", "software supply chain", "dependency", "dependencies", "malicious package", "package registry", "npm", "pypi", "rubygems", "dependency confusion", "typosquatting", "sbom", "slsa", "sigstore", "provenance", "ci/cd", "github actions", "build system", "artifact signing", "open source security")),
     ("VPN & accès distant", ("vpn", "ssl-vpn", "ssl vpn", "ipsec", "remote access", "remote desktop gateway", "secure client", "anyconnect", "globalprotect", "connect secure", "pulse secure", "netscaler gateway", "citrix gateway", "secure mobile access", "sonicwall sma")),
     ("Surveillance & spyware", ("pegasus", "spyware", "stalkerware", "mercenary surveillance", "surveillance", "zero-click", "zero click", "nso group", "forensic")),
@@ -460,7 +495,9 @@ def canonicalize_url(value: str, base_url: str) -> str:
     if port and not ((parsed.scheme == "https" and port == 443) or (parsed.scheme == "http" and port == 80)):
         host = f"{host}:{port}"
     path = parsed.path or "/"
-    return urllib.parse.urlunsplit((parsed.scheme.lower(), host, path, urllib.parse.urlencode(filtered_query), ""))
+    # Some public registries (notably BonjourLaFuite) use stable fragments as
+    # per-incident permalinks, so the fragment is part of the article identity.
+    return urllib.parse.urlunsplit((parsed.scheme.lower(), host, path, urllib.parse.urlencode(filtered_query), parsed.fragment))
 
 
 def element_name(element: ET.Element) -> str:
@@ -494,6 +531,9 @@ def entry_link(element: ET.Element, base_url: str) -> str:
         canonical = canonicalize_url(value, base_url)
         if canonical:
             return canonical
+    guid = element_text(element, ("guid", "id"))
+    if guid:
+        return canonicalize_url(guid, base_url)
     return ""
 
 
@@ -540,6 +580,8 @@ def parse_feed(data: bytes, source: dict, fetched_at: int) -> list[dict]:
         else:
             category, matched_topic = classify_article(title, summary, source["default_category"])
         if source["filter"] == "cyber" and not matched_topic:
+            continue
+        if source["filter"] == "regulatory" and category != "Réglementation & conformité":
             continue
         published_value = element_text(entry, ("pubdate", "published", "updated", "date"))
         published_at = parse_published_at(published_value, fetched_at)
@@ -593,6 +635,91 @@ def store_articles(articles: list[dict]) -> None:
             """,
             articles,
         )
+
+
+def store_history_articles(articles: list[dict]) -> None:
+    """Backfill archive-only rows without replacing richer RSS descriptions."""
+    if not articles:
+        return
+    with database_lock, connect() as connection:
+        connection.executemany(
+            """
+            INSERT OR IGNORE INTO articles(
+              id, source_id, source_name, source_home, source_kind, license_note,
+              title, url, summary, author, published_at, fetched_at, category, cves_json
+            ) VALUES(
+              :id, :source_id, :source_name, :source_home, :source_kind, :license_note,
+              :title, :url, :summary, :author, :published_at, :fetched_at, :category, :cves_json
+            )
+            """,
+            articles,
+        )
+
+
+def history_article(source: dict, title: str, url: str, summary: str, published_at: int, fetched_at: int) -> dict:
+    return {
+        "id": hashlib.sha256(url.encode()).hexdigest(), "source_id": source["id"],
+        "source_name": source["name"], "source_home": source["homepage"],
+        "source_kind": source["kind"], "license_note": source["license"],
+        "title": clean_excerpt(title, 240), "url": url, "summary": clean_excerpt(summary, 360),
+        "author": "", "published_at": published_at, "fetched_at": fetched_at,
+        "category": "Fuites de données · France", "cves_json": "[]",
+    }
+
+
+def refresh_leak_histories() -> int:
+    """Backfill the complete public indexes; RSS feeds only expose recent rows."""
+    now = int(time.time())
+    articles: list[dict] = []
+
+    request = urllib.request.Request("https://bonjourlafuite.eu.org/", headers={"User-Agent": "OpenVigie/0.6 (+https://github.com/Swapshadow/openvigie)"})
+    with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+        document = response.read(3_000_000).decode("utf-8", "replace")
+    source = SOURCE_BY_ID["bonjour-la-fuite"]
+    entries = list(re.finditer(r'<div\s+class="timeline-entry[^"]*"(?P<attrs>.*?)>', document, re.DOTALL | re.IGNORECASE))
+    for index, match in enumerate(entries):
+        attrs = match.group("attrs")
+        title_match = re.search(r'data-title="([^"]+)"', attrs, re.IGNORECASE)
+        date_match = re.search(r'data-date="([^"]+)"', attrs, re.IGNORECASE)
+        if not title_match or not date_match:
+            continue
+        title = html.unescape(title_match.group(1)).strip()
+        try:
+            published_at = int(datetime.strptime(date_match.group(1).split(" GMT", 1)[0], "%a %b %d %Y %H:%M:%S").replace(tzinfo=timezone.utc).timestamp())
+        except ValueError:
+            continue
+        segment_end = entries[index + 1].start() if index + 1 < len(entries) else min(len(document), match.end() + 6000)
+        segment = document[match.end():segment_end]
+        anchor = re.search(r'href="#([^"]+)"', segment, re.IGNORECASE)
+        tags = [clean_excerpt(value, 80) for value in re.findall(r'class="leak-data-tag"[^>]*>(.*?)</span>', segment, re.DOTALL | re.IGNORECASE)]
+        url = "https://bonjourlafuite.eu.org/#" + (anchor.group(1) if anchor else urllib.parse.quote(f"{title}-{datetime.fromtimestamp(published_at, timezone.utc).date()}"))
+        status = html.unescape(re.search(r'data-status="([^"]+)"', attrs, re.IGNORECASE).group(1)) if re.search(r'data-status="([^"]+)"', attrs, re.IGNORECASE) else "signalé"
+        summary = f"Statut : {status}." + (f" Données concernées : {', '.join(tags)}." if tags else "")
+        articles.append(history_article(source, title, url, summary, published_at, now))
+
+    request = urllib.request.Request("https://frenchbreaches.com/archives", headers={"User-Agent": "OpenVigie/0.6 (+https://github.com/Swapshadow/openvigie)"})
+    with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+        document = response.read(4_000_000).decode("utf-8", "replace")
+    source = SOURCE_BY_ID["french-breaches"]
+    pattern = re.compile(r'<li\s+class="ab-item"[^>]*>(?P<body>.*?)</li>', re.DOTALL | re.IGNORECASE)
+    for match in pattern.finditer(document):
+        body = match.group("body")
+        date_match = re.search(r'class="ab-date"[^>]*>(\d{2}/\d{2}/\d{4})</time>', body, re.IGNORECASE)
+        link_match = re.search(r'class="ab-link"\s+href="([^"]+)">(.*?)</a>', body, re.DOTALL | re.IGNORECASE)
+        if not date_match or not link_match:
+            continue
+        try:
+            published_at = int(datetime.strptime(date_match.group(1), "%d/%m/%Y").replace(tzinfo=PARIS).timestamp())
+        except ValueError:
+            continue
+        title = clean_excerpt(link_match.group(2), 240)
+        url = canonicalize_url(link_match.group(1), "https://frenchbreaches.com/archives")
+        badges = [clean_excerpt(value, 80) for value in re.findall(r'class="ab-badge[^"]*"[^>]*>(.*?)</span>', body, re.DOTALL | re.IGNORECASE)]
+        if title and url:
+            articles.append(history_article(source, title, url, " · ".join(badges) or "Signalement archivé", published_at, now))
+
+    store_history_articles(articles)
+    return len(articles)
 
 
 def refresh_feed(source: dict) -> int:
@@ -807,19 +934,39 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
     }
 
 
-def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str = "") -> dict:
+def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str = "", sort: str = "recent") -> dict:
     """Search the local archive, then complement it with live attributed web news."""
     query = re.sub(r"\s+", " ", query).strip()[:240]
     if len(query) < 2:
         raise ValueError("La recherche doit contenir au moins 2 caractères")
-    tokens = [token.lower() for token in re.findall(r"[\wÀ-ÿ.-]{2,}", query, re.UNICODE)][:12]
+    raw_tokens = [token.lower() for token in re.findall(r"[\wÀ-ÿ.-]{2,}", query, re.UNICODE)][:12]
+    cyber_lexicon = (
+        "fortipam", "fortinet", "fortigate", "fortios", "fortiweb", "fortimanager", "fortisiem",
+        "paloalto", "panos", "globalprotect", "cisco", "anyconnect", "citrix", "netscaler",
+        "microsoft", "windows", "exchange", "sharepoint", "ivanti", "sonicwall", "vmware",
+        "vcenter", "esxi", "veeam", "juniper", "pulse", "checkpoint", "cloudflare",
+        "ransomware", "phishing", "vulnerability", "vulnerabilite", "malware", "spyware",
+    )
+    corrections = []
+    tokens = []
+    for token in raw_tokens:
+        normalized = normalized_search_text(token).replace("-", "")
+        candidate = max(cyber_lexicon, key=lambda item: SequenceMatcher(None, normalized, item).ratio())
+        ratio = SequenceMatcher(None, normalized, candidate).ratio()
+        corrected = candidate if len(normalized) >= 5 and ratio >= 0.78 and normalized != candidate else token
+        if corrected != token:
+            corrections.append({"from": token, "to": corrected})
+        tokens.append(corrected)
     if not tokens:
         raise ValueError("Aucun mot-clé exploitable")
+    normalized_query = " ".join(tokens)
+    generic_tokens = {"cve", "cves", "cyber", "cybersecurity", "securite", "vulnerability", "vulnerabilite", "news", "actualite"}
+    meaningful_tokens = [token for token in tokens if normalized_search_text(token) not in generic_tokens] or tokens
 
     cutoff = int(time.time()) - min(3650, max(1, days)) * 86400
     token_clauses = []
     parameters: list[object] = [cutoff]
-    for token in tokens:
+    for token in meaningful_tokens:
         token_clauses.append("(lower(title) LIKE ? OR lower(summary) LIKE ? OR lower(cves_json) LIKE ?)")
         needle = f"%{token}%"
         parameters.extend([needle, needle, needle])
@@ -841,14 +988,12 @@ def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str
         summary = row["summary"].lower()
         cves = json.loads(row["cves_json"] or "[]")
         source = SOURCE_BY_ID.get(row["source_id"], {})
-        exact = query.lower() in f"{title} {summary}"
-        title_hits = sum(token in title for token in tokens)
-        summary_hits = sum(token in summary for token in tokens)
-        unique_hits = sum(token in f"{title} {summary}" for token in tokens)
-        if len(tokens) > 1 and unique_hits < len(tokens):
-            continue
+        exact = normalized_query.lower() in f"{title} {summary}"
+        title_hits = sum(token in title for token in meaningful_tokens)
+        summary_hits = sum(token in summary for token in meaningful_tokens)
+        unique_hits = sum(token in f"{title} {summary}" for token in meaningful_tokens)
         freshness = max(0.0, 18.0 * (1 - max(0, now - row["published_at"]) / max(days * 86400, 1)))
-        hit_ratio = (title_hits + summary_hits) / max(len(tokens), 1)
+        hit_ratio = (title_hits + summary_hits) / max(len(meaningful_tokens), 1)
         score = (35 if exact else 0) + title_hits * 16 + summary_hits * 5 + hit_ratio * 20 + source.get("priority", 5) * 3 + freshness
         ranked.append((score, row, cves))
     ranked.sort(key=lambda item: (item[0], item[1]["published_at"]), reverse=True)
@@ -870,7 +1015,7 @@ def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str
     live_error = ""
     try:
         live_url = "https://www.bing.com/news/search?" + urllib.parse.urlencode({
-            "q": query, "format": "rss", "setlang": "fr-fr", "cc": "fr",
+            "q": normalized_query, "format": "rss", "setlang": "fr-fr", "cc": "fr",
         })
         request = urllib.request.Request(live_url, headers={
             "Accept": "application/rss+xml, application/xml;q=0.9",
@@ -913,13 +1058,130 @@ def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str
     except Exception as error:
         live_error = str(error)[:180]
 
-    results.sort(key=lambda item: (item["score"], item["publishedAt"]), reverse=True)
+    # A CVE query must also search the authoritative NVD window. This avoids
+    # false empty states when a vendor advisory has not reached an RSS feed yet.
+    nvd_error = ""
+    period_expanded = False
+    if "cve" in tokens or not results:
+        try:
+            nvd_terms = [token for token in tokens if token not in {"cve", "cves", "vulnerability", "vulnerabilite"}]
+            if nvd_terms:
+                nvd_days = min(days, 120)
+                start = datetime.fromtimestamp(now - nvd_days * 86400, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                end = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.999Z")
+                nvd_url = NVD_API + "?" + urllib.parse.urlencode({
+                    "keywordSearch": " ".join(nvd_terms), "pubStartDate": start,
+                    "pubEndDate": end, "resultsPerPage": 50,
+                })
+                nvd = fetch_json(nvd_url)
+                if not nvd.get("vulnerabilities") and days < 3650:
+                    nvd_url = NVD_API + "?" + urllib.parse.urlencode({
+                        "keywordSearch": " ".join(nvd_terms), "resultsPerPage": 100,
+                    })
+                    nvd = fetch_json(nvd_url)
+                    period_expanded = bool(nvd.get("vulnerabilities"))
+                known_ids = {item["id"] for item in results}
+                for wrapper in nvd.get("vulnerabilities", []):
+                    cve = wrapper.get("cve", {})
+                    cve_id = cve.get("id", "")
+                    if not cve_id or cve_id in known_ids:
+                        continue
+                    descriptions = cve.get("descriptions", [])
+                    description = next((item.get("value", "") for item in descriptions if item.get("lang") == "fr"), "")
+                    if not description:
+                        description = next((item.get("value", "") for item in descriptions if item.get("lang") == "en"), "")
+                    published = cve.get("published", "")
+                    published_at = parse_published_at(published, now)
+                    title = f"{cve_id} · {clean_excerpt(description, 150)}"
+                    searchable = normalized_search_text(f"{cve_id} {description}")
+                    matched = [token for token in tokens if normalized_search_text(token) in searchable]
+                    results.append({
+                        "id": cve_id, "title": title,
+                        "url": f"https://nvd.nist.gov/vuln/detail/{urllib.parse.quote(cve_id)}",
+                        "excerpt": clean_excerpt(description, 360), "publishedAt": iso_timestamp(published_at),
+                        "category": "Vulnérabilités & correctifs", "cves": [cve_id],
+                        "score": 95 + len(matched) * 20, "matchedTerms": matched,
+                        "outsidePeriod": published_at < cutoff,
+                        "source": {"id": "nvd", "name": "NVD / NIST", "homepage": "https://nvd.nist.gov/",
+                                   "kind": "Base officielle de vulnérabilités"},
+                    })
+                    known_ids.add(cve_id)
+        except Exception as error:
+            nvd_error = str(error)[:180]
+
+    if sort == "relevance":
+        results.sort(key=lambda item: (item["score"], item["publishedAt"]), reverse=True)
+    else:
+        sort = "recent"
+        results.sort(key=lambda item: (item["publishedAt"], item["score"]), reverse=True)
     results = results[:limit]
     return {
-        "query": query, "generatedAt": iso_timestamp(now), "days": days,
+        "query": query, "normalizedQuery": normalized_query, "corrections": corrections,
+        "generatedAt": iso_timestamp(now), "days": days, "sort": sort,
         "results": results, "total": len(results), "sources": feed_statuses(),
         "webSearch": {"active": not bool(live_error), "provider": "Bing Actualités", "error": live_error or None},
-        "method": "Fusion de l’archive OpenVigie et de l’actualité web, puis classement par correspondance, autorité et fraîcheur.",
+        "nvdSearch": {"active": not bool(nvd_error), "error": nvd_error or None},
+        "periodExpanded": period_expanded,
+        "method": "Recherche tolérante aux fautes, fusion de l’archive OpenVigie, de l’actualité web et du NVD, avec élargissement automatique si la période ne contient aucun résultat CVE.",
+    }
+
+
+def build_leak_watch(days: int = 0) -> dict:
+    """Return attributed French breach registries plus major international actors."""
+    now = int(time.time())
+    days = min(3650, max(0, days))
+    if days == 0:
+        cutoff = 0
+        period_label = "Tout l’historique"
+    elif days == 1:
+        local_now = datetime.fromtimestamp(now, PARIS)
+        cutoff = int(local_now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+        period_label = "Aujourd’hui"
+    else:
+        cutoff = now - days * 86400
+        period_label = f"Les {days} derniers jours"
+    french_ids = ("french-breaches", "bonjour-la-fuite")
+    actors = ("microsoft", "apple", "openai", "google", "alphabet", "amazon", "aws", "meta", "facebook")
+    leak_terms = ("breach", "leak", "stolen data", "exposed data", "fuite", "vol de donnees", "donnees volees")
+
+    with database_lock, connect() as connection:
+        french_rows = connection.execute(
+            "SELECT * FROM articles WHERE published_at >= ? AND source_id IN (?, ?) ORDER BY published_at DESC",
+            (cutoff, *french_ids),
+        ).fetchall()
+        candidates = connection.execute(
+            "SELECT * FROM articles WHERE published_at >= ? AND source_id NOT IN (?, ?) ORDER BY published_at DESC LIMIT 500",
+            (cutoff, *french_ids),
+        ).fetchall()
+
+    def serialize(row: sqlite3.Row, scope: str, actor: str = "") -> dict:
+        return {
+            "id": row["id"], "title": row["title"], "url": row["url"],
+            "excerpt": row["summary"], "publishedAt": iso_timestamp(row["published_at"]),
+            "category": row["category"], "scope": scope, "actor": actor,
+            "source": {"id": row["source_id"], "name": row["source_name"],
+                       "homepage": row["source_home"], "kind": row["source_kind"]},
+        }
+
+    french = [serialize(row, "france") for row in french_rows]
+    international = []
+    for row in candidates:
+        searchable = normalized_search_text(f"{row['title']} {row['summary']}")
+        actor = next((name for name in actors if name in searchable), "")
+        if actor and any(term in searchable for term in leak_terms):
+            international.append(serialize(row, "international", actor.title()))
+
+    items = sorted(french + international, key=lambda item: item["publishedAt"], reverse=True)
+    return {
+        "generatedAt": iso_timestamp(now), "days": days,
+        "period": {"label": period_label, "start": iso_timestamp(cutoff), "end": iso_timestamp(now)},
+        "items": items, "counts": {"france": len(french), "international": len(international)},
+        "watchlist": ["Microsoft", "Apple", "OpenAI", "Google / Alphabet", "Amazon / AWS", "Meta"],
+        "sources": [
+            {"name": "FrenchBreaches", "url": "https://frenchbreaches.com/", "status": "online"},
+            {"name": "BonjourLaFuite", "url": "https://bonjourlafuite.eu.org/", "status": "online"},
+        ],
+        "method": "Flux RSS officiels français et veille internationale des grands acteurs, triés du plus récent au plus ancien.",
     }
 
 
@@ -1171,15 +1433,25 @@ def vulnerability_scheduler() -> None:
 def cleanup_old_articles() -> None:
     cutoff = int(time.time()) - 180 * 86400
     with database_lock, connect() as connection:
-        connection.execute("DELETE FROM articles WHERE published_at < ?", (cutoff,))
+        connection.execute(
+            "DELETE FROM articles WHERE published_at < ? AND source_id NOT IN ('french-breaches', 'bonjour-la-fuite')",
+            (cutoff,),
+        )
         connection.execute("PRAGMA optimize")
 
 
 def feed_scheduler() -> None:
     last_cleanup = 0
+    last_history_refresh = 0
     while True:
         refresh_due_feeds(limit=5)
         now = int(time.time())
+        if last_history_refresh < now - 21600:
+            try:
+                print(f"leak histories refreshed: {refresh_leak_histories()} indexed entries", flush=True)
+            except Exception as error:
+                print(f"leak history refresh failed: {error}", flush=True)
+            last_history_refresh = now
         if last_cleanup < now - 86400:
             cleanup_old_articles()
             last_cleanup = now
@@ -1230,7 +1502,7 @@ class Handler(BaseHTTPRequestHandler):
                     limit = int(parameters.get("limit", ["18"])[0])
                 except ValueError:
                     raise ValueError("limit doit être un nombre") from None
-                limit = min(30, max(1, limit))
+                limit = min(100, max(1, limit))
                 self.send_json(200, build_bulletin(cadence, limit, category))
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})
@@ -1243,14 +1515,26 @@ class Handler(BaseHTTPRequestHandler):
                 parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
                 query = parameters.get("q", [""])[0]
                 source_id = parameters.get("source", [""])[0].strip()
+                sort = parameters.get("sort", ["recent"])[0].strip()
                 limit = min(60, max(1, int(parameters.get("limit", ["30"])[0])))
                 days = min(3650, max(1, int(parameters.get("days", ["365"])[0])))
-                self.send_json(200, search_articles(query, limit, days, source_id))
+                self.send_json(200, search_articles(query, limit, days, source_id, sort))
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})
             except Exception as error:
                 print(f"search error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne de la recherche"})
+            return
+        if parsed.path == "/leaks":
+            try:
+                parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                days = int(parameters.get("days", ["0"])[0])
+                self.send_json(200, build_leak_watch(days))
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except Exception as error:
+                print(f"leak watch error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne de la veille fuites"})
             return
         if parsed.path != "/vulnerabilities":
             self.send_json(404, {"error": "Route inconnue"})
