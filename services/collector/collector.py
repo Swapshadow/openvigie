@@ -25,7 +25,7 @@ DB_PATH = os.environ.get("OPENVIGIE_DB_PATH", "/data/openvigie.db")
 NVD_API_KEY = os.environ.get("NVD_API_KEY", "")
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CISA_KEV_API = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-REFRESH_SECONDS = max(300, int(os.environ.get("OPENVIGIE_REFRESH_SECONDS", "900")))
+REFRESH_SECONDS = max(300, int(os.environ.get("OPENVIGIE_REFRESH_SECONDS", "86400")))
 FEED_REFRESH_SECONDS = max(1800, int(os.environ.get("OPENVIGIE_FEED_REFRESH_SECONDS", "10800")))
 HTTP_TIMEOUT = 25
 MAX_RESULTS = 100
@@ -54,10 +54,16 @@ FEED_SOURCES = (
         "priority": 10, "filter": "all", "license": "Attribution et lien vers la publication",
     },
     {
-        "id": "cert-fr", "name": "CERT-FR / ANSSI",
-        "feed_url": "https://www.cert.ssi.gouv.fr/feed/", "homepage": "https://www.cert.ssi.gouv.fr/",
-        "kind": "Autorité nationale", "default_category": "Vulnérabilités & correctifs",
-        "priority": 10, "filter": "all", "license": "Source publique attribuée",
+        "id": "cert-fr-alertes", "name": "CERT-FR · Alertes de sécurité",
+        "feed_url": "https://cert.ssi.gouv.fr/alerte/feed/", "homepage": "https://cert.ssi.gouv.fr/alerte/",
+        "kind": "Alerte nationale urgente", "default_category": "CERT-FR · Alertes",
+        "priority": 10, "filter": "all", "fixed_category": True, "license": "Source publique attribuée",
+    },
+    {
+        "id": "cert-fr-avis", "name": "CERT-FR · Avis de sécurité",
+        "feed_url": "https://cert.ssi.gouv.fr/avis/feed/", "homepage": "https://cert.ssi.gouv.fr/avis/",
+        "kind": "Avis national de vulnérabilité", "default_category": "CERT-FR · Avis",
+        "priority": 10, "filter": "all", "fixed_category": True, "license": "Source publique attribuée",
     },
     {
         "id": "cisa-advisories", "name": "CISA Cybersecurity Advisories",
@@ -226,6 +232,12 @@ FEED_SOURCES = (
         "kind": "Journalisme d’investigation", "default_category": "Presse & lanceurs d’alerte",
         "priority": 8, "filter": "cyber", "license": "Titre et extrait court avec attribution",
     },
+    {
+        "id": "zataz", "name": "ZATAZ",
+        "feed_url": "https://www.zataz.com/feed/", "homepage": "https://www.zataz.com/",
+        "kind": "Presse cybersécurité française", "default_category": "Cybercriminalité",
+        "priority": 8, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
 )
 
 CATEGORY_RULES = (
@@ -333,6 +345,10 @@ def initialize_database() -> None:
                 """,
                 (source["id"], source["name"], source["feed_url"], source["homepage"], source["kind"]),
             )
+        # Migration from the former mixed CERT-FR feed to the two official,
+        # separately classified alert and advisory feeds.
+        connection.execute("DELETE FROM feed_runs WHERE source_id = 'cert-fr'")
+        connection.execute("DELETE FROM articles WHERE source_id = 'cert-fr'")
 
 
 def validate_text(value: str, maximum: int) -> str:
@@ -519,7 +535,10 @@ def parse_feed(data: bytes, source: dict, fetched_at: int) -> list[dict]:
         if not title or not url:
             continue
         summary = clean_excerpt(element_text(entry, ("description", "summary")), 360)
-        category, matched_topic = classify_article(title, summary, source["default_category"])
+        if source.get("fixed_category"):
+            category, matched_topic = source["default_category"], True
+        else:
+            category, matched_topic = classify_article(title, summary, source["default_category"])
         if source["filter"] == "cyber" and not matched_topic:
             continue
         published_value = element_text(entry, ("pubdate", "published", "updated", "date"))
@@ -712,8 +731,7 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
             tuple(parameters),
         ).fetchall()
         counts = connection.execute(
-            "SELECT category, COUNT(*) AS count FROM articles WHERE published_at >= ? GROUP BY category ORDER BY count DESC, category",
-            (cutoff,),
+            "SELECT category, COUNT(*) AS count FROM articles GROUP BY category ORDER BY count DESC, category",
         ).fetchall()
         archive_fallback = False
         if not rows:
@@ -856,6 +874,58 @@ def normalize_cve(cve: dict, kev: dict[str, dict]) -> dict:
     }
 
 
+def related_articles(query: dict[str, str], vulnerabilities: list[dict]) -> list[dict]:
+    """Correlate the monitored asset with recent attributed bulletin entries."""
+    cve_ids = {item["id"] for item in vulnerabilities if item.get("id")}
+    raw_terms = " ".join((
+        query.get("vendor", ""), query.get("product", ""),
+        query.get("cpeVendor", "").replace("_", " "),
+        query.get("cpeProduct", "").replace("_", " "),
+    ))
+    ignored = {"server", "desktop", "linux", "network", "networks", "system", "software", "secure", "manager", "agent"}
+    terms = {
+        term for term in re.findall(r"[a-z0-9][a-z0-9.+-]{2,}", normalized_search_text(raw_terms))
+        if term not in ignored and len(term) >= 4
+    }
+    with database_lock, connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM articles WHERE published_at >= ? ORDER BY published_at DESC LIMIT 600",
+            (int(time.time()) - 120 * 86400,),
+        ).fetchall()
+
+    matches: list[tuple[int, sqlite3.Row, list[str]]] = []
+    for row in rows:
+        article_cves = set(json.loads(row["cves_json"] or "[]"))
+        shared_cves = sorted(cve_ids.intersection(article_cves))
+        searchable = normalized_search_text(f"{row['title']} {row['summary']}")
+        matching_terms = sorted(term for term in terms if term in searchable)
+        if not shared_cves and not matching_terms:
+            continue
+        score = len(shared_cves) * 100 + len(matching_terms) * 10
+        if row["source_id"] == "cert-fr-alertes":
+            score += 35
+        elif row["source_id"] == "cert-fr-avis":
+            score += 25
+        if query.get("version") and query["version"].lower() in searchable:
+            score += 8
+        reasons = [*shared_cves[:3], *matching_terms[:3]]
+        matches.append((score, row, reasons))
+    matches.sort(key=lambda item: (item[0], item[1]["published_at"]), reverse=True)
+    return [{
+        "id": row["id"], "title": row["title"], "url": row["url"],
+        "excerpt": row["summary"], "publishedAt": iso_timestamp(row["published_at"]),
+        "category": row["category"], "cves": json.loads(row["cves_json"] or "[]"),
+        "source": {"id": row["source_id"], "name": row["source_name"], "homepage": row["source_home"]},
+        "matchReasons": reasons,
+    } for _, row, reasons in matches[:12]]
+
+
+def attach_related_articles(payload: dict, query: dict[str, str]) -> dict:
+    enriched = dict(payload)
+    enriched["relatedArticles"] = related_articles(query, payload.get("vulnerabilities", []))
+    return enriched
+
+
 def collect(query: dict[str, str]) -> dict:
     use_cpe = bool(query["cpeVendor"] and query["cpeProduct"] and query["version"])
     method = "cpe" if use_cpe else "keyword"
@@ -927,7 +997,7 @@ def refresh_query(key: str, query: dict[str, str], force: bool = False) -> dict:
     if not force and row and row["payload_json"] and (row["last_success"] or 0) + REFRESH_SECONDS > now:
         payload = json.loads(row["payload_json"])
         payload["cached"] = True
-        return payload
+        return attach_related_articles(payload, query)
 
     with lock_for(key):
         row = read_cached(key)
@@ -935,7 +1005,7 @@ def refresh_query(key: str, query: dict[str, str], force: bool = False) -> dict:
         if not force and row and row["payload_json"] and (row["last_success"] or 0) + REFRESH_SECONDS > now:
             payload = json.loads(row["payload_json"])
             payload["cached"] = True
-            return payload
+            return attach_related_articles(payload, query)
         try:
             payload = collect(query)
             with database_lock, connect() as connection:
@@ -943,7 +1013,7 @@ def refresh_query(key: str, query: dict[str, str], force: bool = False) -> dict:
                     "UPDATE monitored_queries SET payload_json=?, last_attempt=?, last_success=?, next_refresh=?, last_error=NULL WHERE cache_key=?",
                     (json.dumps(payload, separators=(",", ":")), now, now, now + REFRESH_SECONDS, key),
                 )
-            return payload
+            return attach_related_articles(payload, query)
         except Exception as error:
             with database_lock, connect() as connection:
                 connection.execute(
@@ -956,7 +1026,7 @@ def refresh_query(key: str, query: dict[str, str], force: bool = False) -> dict:
                 payload["cached"] = True
                 payload["stale"] = True
                 payload["warning"] = "Les sources sont indisponibles ; dernier instantané connu affiché."
-                return payload
+                return attach_related_articles(payload, query)
             raise
 
 

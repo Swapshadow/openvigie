@@ -220,6 +220,7 @@ export async function GET(request: Request) {
       fetchedAt: new Date().toISOString(),
       cached: false,
       sources: sourceStatus,
+      relatedArticles: [],
     };
 
     responseCache.set(cacheKey, { createdAt: Date.now(), expiresAt: Date.now() + CACHE_TTL, payload });

@@ -8,7 +8,7 @@ type DossierTab = 'summary' | 'attack' | 'evidence';
 type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'KEV';
 
 const STORAGE_KEY = 'openvigie.inventory.v1';
-const AUTO_REFRESH_MS = 15 * 60 * 1000;
+const AUTO_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 function formatDate(value: string) {
   if (!value) return '—';
@@ -189,7 +189,7 @@ export default function InventoryWorkspace() {
           <p>Ajoutez vos versions réellement installées ; OpenVigie les rapproche des sources publiques.</p>
         </div>
         <div className="inventory-actions">
-          <span className="auto-refresh"><i /> Actualisation auto · 15 min</span>
+          <span className="auto-refresh"><i /> Actualisation CVE · quotidienne</span>
           <button type="button" className="primary-action" onClick={() => setFormOpen((open) => !open)}>{formOpen ? 'Fermer' : '+ Ajouter un équipement'}</button>
         </div>
       </div>
@@ -299,6 +299,27 @@ export default function InventoryWorkspace() {
 
               {loadError && <div className="source-error" role="alert"><strong>Veille momentanément indisponible</strong><span>{loadError}</span><button type="button" onClick={() => void refresh(true)}>Réessayer</button></div>}
               {data?.stale && <div className="source-error stale-warning" role="status"><strong>Dernier instantané connu</strong><span>{data.warning}</span><button type="button" onClick={() => void refresh(true)}>Réessayer</button></div>}
+
+              {data?.relatedArticles.length ? (
+                <section className="asset-alerts" aria-labelledby="asset-alerts-title">
+                  <header>
+                    <div><span>CORRÉLATION PARC ↔ VEILLE</span><h3 id="asset-alerts-title">Alertes liées à cet équipement</h3></div>
+                    <strong>{data.relatedArticles.length} correspondance{data.relatedArticles.length > 1 ? 's' : ''}</strong>
+                  </header>
+                  <div className="asset-alert-grid">
+                    {data.relatedArticles.map((article) => (
+                      <a href={article.url} target="_blank" rel="noreferrer" key={article.id}>
+                        <span className={article.source.id.startsWith('cert-fr') ? 'cert-source' : ''}>{article.category}</span>
+                        <h4>{article.title}</h4>
+                        <p>{article.excerpt}</p>
+                        <footer><strong>{article.source.name}</strong><small>{article.matchReasons.slice(0, 3).join(' · ')}</small></footer>
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              ) : data && !loading ? (
+                <div className="asset-alerts-empty"><strong>Aucune alerte éditoriale corrélée</strong><span>La surveillance quotidienne reste active pour cette marque, ce produit et cette version.</span></div>
+              ) : null}
 
               <div className="vulnerability-tools">
                 <label><span className="sr-only">Rechercher une CVE</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher CVE ou mot-clé…" /></label>

@@ -232,7 +232,17 @@ export const vendorCatalog: VendorDefinition[] = [
   },
   {
     id: 'canonical', name: 'Canonical Ubuntu', short: 'UB', products: [
-      { id: 'ubuntu', name: 'Ubuntu Server', family: 'Système serveur', part: 'o', cpeVendor: 'canonical', cpeProduct: 'ubuntu_linux', versions: ['26.04', '24.04', '22.04', '20.04'], advisoryUrl: 'https://ubuntu.com/security/notices' },
+      { id: 'ubuntu', name: 'Ubuntu Linux (Server / Desktop)', family: 'Système Linux', part: 'o', cpeVendor: 'canonical', cpeProduct: 'ubuntu_linux', versions: ['26.04', '25.10', '25.04', '24.04', '22.04', '20.04'], advisoryUrl: 'https://ubuntu.com/security/notices' },
+    ],
+  },
+  {
+    id: 'debian', name: 'Debian', short: 'DEB', products: [
+      { id: 'debian-linux', name: 'Debian GNU/Linux', family: 'Système Linux', part: 'o', cpeVendor: 'debian', cpeProduct: 'debian_linux', versions: ['13', '12', '11', '10'], advisoryUrl: 'https://www.debian.org/security/' },
+    ],
+  },
+  {
+    id: 'fedora', name: 'Fedora Project', short: 'FD', products: [
+      { id: 'fedora-linux', name: 'Fedora Linux', family: 'Système Linux', part: 'o', cpeVendor: 'fedoraproject', cpeProduct: 'fedora', versions: ['43', '42', '41', '40'], advisoryUrl: 'https://bodhi.fedoraproject.org/updates/?type=security' },
     ],
   },
   {

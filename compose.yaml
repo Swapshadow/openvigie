@@ -9,7 +9,7 @@ services:
     environment:
       NVD_API_KEY: ${NVD_API_KEY:-}
       OPENVIGIE_DB_PATH: /data/openvigie.db
-      OPENVIGIE_REFRESH_SECONDS: 900
+      OPENVIGIE_REFRESH_SECONDS: ${OPENVIGIE_REFRESH_SECONDS:-86400}
       OPENVIGIE_FEED_REFRESH_SECONDS: ${OPENVIGIE_FEED_REFRESH_SECONDS:-10800}
     volumes:
       - openvigie_data:/data

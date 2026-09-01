@@ -73,7 +73,9 @@ The **My assets** workspace now lets users:
 - correlate matching CVEs with the CISA Known Exploited Vulnerabilities catalog;
 - filter by severity, exploitation status, CVE identifier, or description;
 - open primary vendor advisories, patches, mitigations, and NVD evidence; and
-- refresh automatically every 15 minutes.
+- correlate recent CERT-FR alerts and security advisories with the monitored
+  vendor, product, version, and matching CVE identifiers; and
+- refresh every registered product/version snapshot automatically each day.
 
 With Docker, a dedicated collector stores normalized snapshots in a SQLite
 volume and continues refreshing monitored product/version queries while the
@@ -90,12 +92,14 @@ OpenVigie works with the public NVD rate limit. For larger inventories, copy
 ## Live sources
 
 - NVD / NIST CVE API 2.0 and CISA Known Exploited Vulnerabilities;
-- CERT-FR / ANSSI, CISA Cybersecurity Advisories, and CERT-EU;
+- CERT-FR / ANSSI alertes and avis as two dedicated bulletin pages, CISA
+  Cybersecurity Advisories, and CERT-EU;
 - NCSC UK, Cisco PSIRT, and Palo Alto Networks Security Advisories;
 - OpenSSF and GitHub Supply Chain Security;
 - SentinelLabs, Cisco Talos, Unit 42, CrowdStrike, ESET, Zero Day Initiative,
   watchTowr Labs, and PortSwigger Research;
 - BleepingComputer, The Record, Krebs on Security, and Schneier on Security;
+- ZATAZ cybersecurity news;
 - Freedom of the Press Foundation, Electronic Frontier Foundation, Access Now,
   Citizen Lab, Amnesty Security Lab, and Forbidden Stories;
 - Microsoft Security Response Center, Google Security Blog, Mozilla Security,
