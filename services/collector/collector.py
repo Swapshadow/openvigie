@@ -808,7 +808,7 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
 
 
 def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str = "") -> dict:
-    """Search the locally collected, traceable cyber press archive."""
+    """Search the local archive, then complement it with live attributed web news."""
     query = re.sub(r"\s+", " ", query).strip()[:240]
     if len(query) < 2:
         raise ValueError("La recherche doit contenir au moins 2 caractères")
@@ -817,12 +817,13 @@ def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str
         raise ValueError("Aucun mot-clé exploitable")
 
     cutoff = int(time.time()) - min(3650, max(1, days)) * 86400
-    clauses = ["published_at >= ?"]
+    token_clauses = []
     parameters: list[object] = [cutoff]
     for token in tokens:
-        clauses.append("(lower(title) LIKE ? OR lower(summary) LIKE ? OR lower(cves_json) LIKE ?)")
+        token_clauses.append("(lower(title) LIKE ? OR lower(summary) LIKE ? OR lower(cves_json) LIKE ?)")
         needle = f"%{token}%"
         parameters.extend([needle, needle, needle])
+    clauses = ["published_at >= ?", f"({' OR '.join(token_clauses)})"]
     if source_id:
         clauses.append("source_id = ?")
         parameters.append(source_id[:80])
@@ -843,8 +844,12 @@ def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str
         exact = query.lower() in f"{title} {summary}"
         title_hits = sum(token in title for token in tokens)
         summary_hits = sum(token in summary for token in tokens)
+        unique_hits = sum(token in f"{title} {summary}" for token in tokens)
+        if len(tokens) > 1 and unique_hits < len(tokens):
+            continue
         freshness = max(0.0, 18.0 * (1 - max(0, now - row["published_at"]) / max(days * 86400, 1)))
-        score = (35 if exact else 0) + title_hits * 16 + summary_hits * 5 + source.get("priority", 5) * 3 + freshness
+        hit_ratio = (title_hits + summary_hits) / max(len(tokens), 1)
+        score = (35 if exact else 0) + title_hits * 16 + summary_hits * 5 + hit_ratio * 20 + source.get("priority", 5) * 3 + freshness
         ranked.append((score, row, cves))
     ranked.sort(key=lambda item: (item[0], item[1]["published_at"]), reverse=True)
 
@@ -859,10 +864,62 @@ def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str
             "source": {"id": row["source_id"], "name": row["source_name"],
                        "homepage": row["source_home"], "kind": row["source_kind"]},
         })
+
+    # Bing News exposes a public RSS response and works without a private API key.
+    # It complements the auditable local archive for topics not yet seen in a feed.
+    live_error = ""
+    try:
+        live_url = "https://www.bing.com/news/search?" + urllib.parse.urlencode({
+            "q": query, "format": "rss", "setlang": "fr-fr", "cc": "fr",
+        })
+        request = urllib.request.Request(live_url, headers={
+            "Accept": "application/rss+xml, application/xml;q=0.9",
+            "User-Agent": "OpenVigie/0.5 (+https://github.com/Swapshadow/openvigie)",
+        })
+        with urllib.request.urlopen(request, timeout=12) as response:
+            data = response.read(1_000_000)
+        root = ET.fromstring(data)
+        known_urls = {item["url"] for item in results}
+        for entry in root.findall(".//item")[:40]:
+            title = clean_excerpt(entry.findtext("title") or "", 240)
+            summary = clean_excerpt(entry.findtext("description") or "", 360)
+            bing_link = entry.findtext("link") or ""
+            parsed_link = urllib.parse.urlparse(bing_link)
+            original = urllib.parse.parse_qs(parsed_link.query).get("url", [bing_link])[0]
+            original = canonicalize_url(original, live_url)
+            if not title or not original or original in known_urls:
+                continue
+            published_at = parse_published_at(entry.findtext("pubDate") or "", now)
+            if published_at < cutoff:
+                continue
+            source_name = "Source web"
+            for child in entry:
+                if element_name(child) == "source" and (child.text or "").strip():
+                    source_name = clean_excerpt(child.text or "", 100)
+                    break
+            category, _ = classify_article(title, summary, "Actualité cyber")
+            searchable = normalized_search_text(f"{title} {summary}")
+            matched = [token for token in tokens if normalized_search_text(token) in searchable]
+            cves = sorted({match.upper() for match in CVE_PATTERN.findall(f"{title} {summary}")})
+            results.append({
+                "id": hashlib.sha256(original.encode()).hexdigest(), "title": title, "url": original,
+                "excerpt": summary, "publishedAt": iso_timestamp(published_at), "category": category,
+                "cves": cves, "score": 70 + len(matched) * 25, "matchedTerms": matched,
+                "source": {"id": f"web-{normalized_search_text(source_name).replace(' ', '-')[:50]}",
+                           "name": source_name, "homepage": urllib.parse.urlunsplit((urllib.parse.urlsplit(original).scheme, urllib.parse.urlsplit(original).netloc, "/", "", "")),
+                           "kind": "Recherche web · Bing Actualités"},
+            })
+            known_urls.add(original)
+    except Exception as error:
+        live_error = str(error)[:180]
+
+    results.sort(key=lambda item: (item["score"], item["publishedAt"]), reverse=True)
+    results = results[:limit]
     return {
         "query": query, "generatedAt": iso_timestamp(now), "days": days,
         "results": results, "total": len(results), "sources": feed_statuses(),
-        "method": "Recherche plein texte dans l’archive OpenVigie, puis classement par correspondance, autorité et fraîcheur.",
+        "webSearch": {"active": not bool(live_error), "provider": "Bing Actualités", "error": live_error or None},
+        "method": "Fusion de l’archive OpenVigie et de l’actualité web, puis classement par correspondance, autorité et fraîcheur.",
     }
 
 
