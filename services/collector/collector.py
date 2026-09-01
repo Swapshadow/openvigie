@@ -807,6 +807,65 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
     }
 
 
+def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str = "") -> dict:
+    """Search the locally collected, traceable cyber press archive."""
+    query = re.sub(r"\s+", " ", query).strip()[:240]
+    if len(query) < 2:
+        raise ValueError("La recherche doit contenir au moins 2 caractères")
+    tokens = [token.lower() for token in re.findall(r"[\wÀ-ÿ.-]{2,}", query, re.UNICODE)][:12]
+    if not tokens:
+        raise ValueError("Aucun mot-clé exploitable")
+
+    cutoff = int(time.time()) - min(3650, max(1, days)) * 86400
+    clauses = ["published_at >= ?"]
+    parameters: list[object] = [cutoff]
+    for token in tokens:
+        clauses.append("(lower(title) LIKE ? OR lower(summary) LIKE ? OR lower(cves_json) LIKE ?)")
+        needle = f"%{token}%"
+        parameters.extend([needle, needle, needle])
+    if source_id:
+        clauses.append("source_id = ?")
+        parameters.append(source_id[:80])
+
+    with database_lock, connect() as connection:
+        rows = connection.execute(
+            f"SELECT * FROM articles WHERE {' AND '.join(clauses)} ORDER BY published_at DESC LIMIT 250",
+            tuple(parameters),
+        ).fetchall()
+
+    now = int(time.time())
+    ranked = []
+    for row in rows:
+        title = row["title"].lower()
+        summary = row["summary"].lower()
+        cves = json.loads(row["cves_json"] or "[]")
+        source = SOURCE_BY_ID.get(row["source_id"], {})
+        exact = query.lower() in f"{title} {summary}"
+        title_hits = sum(token in title for token in tokens)
+        summary_hits = sum(token in summary for token in tokens)
+        freshness = max(0.0, 18.0 * (1 - max(0, now - row["published_at"]) / max(days * 86400, 1)))
+        score = (35 if exact else 0) + title_hits * 16 + summary_hits * 5 + source.get("priority", 5) * 3 + freshness
+        ranked.append((score, row, cves))
+    ranked.sort(key=lambda item: (item[0], item[1]["published_at"]), reverse=True)
+
+    results = []
+    for score, row, cves in ranked[:limit]:
+        matched = [token for token in tokens if token in f'{row["title"]} {row["summary"]}'.lower()]
+        results.append({
+            "id": row["id"], "title": row["title"], "url": row["url"],
+            "excerpt": row["summary"], "publishedAt": iso_timestamp(row["published_at"]),
+            "category": row["category"], "cves": cves, "score": round(score, 1),
+            "matchedTerms": matched,
+            "source": {"id": row["source_id"], "name": row["source_name"],
+                       "homepage": row["source_home"], "kind": row["source_kind"]},
+        })
+    return {
+        "query": query, "generatedAt": iso_timestamp(now), "days": days,
+        "results": results, "total": len(results), "sources": feed_statuses(),
+        "method": "Recherche plein texte dans l’archive OpenVigie, puis classement par correspondance, autorité et fraîcheur.",
+    }
+
+
 def get_kev() -> dict[str, dict]:
     global kev_cache
     with kev_lock:
@@ -1121,6 +1180,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 print(f"bulletin error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne du bulletin"})
+            return
+        if parsed.path == "/search":
+            try:
+                parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                query = parameters.get("q", [""])[0]
+                source_id = parameters.get("source", [""])[0].strip()
+                limit = min(60, max(1, int(parameters.get("limit", ["30"])[0])))
+                days = min(3650, max(1, int(parameters.get("days", ["365"])[0])))
+                self.send_json(200, search_articles(query, limit, days, source_id))
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except Exception as error:
+                print(f"search error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne de la recherche"})
             return
         if parsed.path != "/vulnerabilities":
             self.send_json(404, {"error": "Route inconnue"})

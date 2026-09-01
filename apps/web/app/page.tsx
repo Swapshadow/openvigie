@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { issues, type Cadence } from './bulletin-data';
 import InventoryWorkspace from './inventory-workspace';
 import LiveBulletinFeed from './live-bulletin-feed';
+import DeepSearch from './deep-search';
 
-type View = 'bulletin' | 'assets';
+type View = 'bulletin' | 'assets' | 'search';
 
 export default function Home() {
   const [view, setView] = useState<View>('bulletin');
@@ -40,6 +41,7 @@ export default function Home() {
             {[
               ['bulletin', '▤', 'Le Bulletin'],
               ['assets', '◫', 'Mon parc'],
+              ['search', '⌕', 'Recherche approfondie'],
             ].map(([id, icon, label]) => (
               <button
                 className="nav-item"
@@ -83,9 +85,9 @@ export default function Home() {
 
             <LiveBulletinFeed cadence={cadence} key={cadence} />
           </section>
-        ) : (
+        ) : view === 'assets' ? (
           <InventoryWorkspace />
-        )}
+        ) : <DeepSearch />}
       </div>
     </main>
   );
