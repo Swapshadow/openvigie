@@ -34,7 +34,8 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
     const requestId = ++requestSequence.current;
     setLoading(true);
     setError('');
-    const parameters = new URLSearchParams({ cadence, limit: page === FRONT_PAGE ? '18' : '24' });
+    const editionLimits: Record<Cadence, string> = { daily: '30', weekly: '42', monthly: '60' };
+    const parameters = new URLSearchParams({ cadence, limit: page === FRONT_PAGE ? editionLimits[cadence] : '30' });
     if (page !== FRONT_PAGE) parameters.set('category', page);
     try {
       const response = await fetch(`/api/articles?${parameters}`, { cache: 'no-store', signal });
@@ -72,6 +73,7 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
   const lead = pageReady ? data?.articles[0] : undefined;
   const frontSecondary = pageReady ? data?.articles.slice(1, 3) ?? [] : [];
   const frontBriefs = pageReady ? data?.articles.slice(3, 5) ?? [] : [];
+  const frontStream = pageReady ? data?.articles.slice(5) ?? [] : [];
   const categoryArticles = pageReady ? data?.articles.slice(0, 18) ?? [] : [];
 
   const turnPage = (direction: -1 | 1) => {
@@ -102,10 +104,14 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
       {lead && page === FRONT_PAGE ? (
         <div className="front-page">
           {data?.archiveFallback ? <p className="archive-notice">Aucune publication dans la période choisie : les dernières archives sont affichées.</p> : null}
+          {cadence === 'monthly' ? <MonthlyPalantirFeature /> : null}
           <div className="front-page-banner"><span>LA UNE</span><p>Les cinq annonces prioritaires de l’édition · fraîcheur, autorité de la source et signaux CVE</p></div>
           <article className="front-lead"><StoryMeta article={lead} /><h3><a href={lead.url} target="_blank" rel="noreferrer">{lead.title}</a></h3>{lead.excerpt ? <p>{lead.excerpt}</p> : null}<footer><span>{formatDate(lead.publishedAt)}{lead.author ? ` · ${lead.author}` : ''}</span><a href={lead.url} target="_blank" rel="noreferrer">Lire l’annonce originale ↗</a></footer></article>
           <div className="front-secondary">{frontSecondary.map((article, index) => <article key={article.id}><b>0{index + 2}</b><StoryMeta article={article} /><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3>{article.excerpt ? <p>{article.excerpt}</p> : null}<a href={article.url} target="_blank" rel="noreferrer">Source originale ↗</a></article>)}</div>
           {frontBriefs.length ? <div className="front-briefs"><strong>EN BREF</strong>{frontBriefs.map((article) => <article key={article.id}><span>{article.category}</span><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3><small>{article.source.name}</small></article>)}</div> : null}
+          {frontStream.length ? <section className="edition-stream"><header><div><span>LE FIL DE L’ÉDITION</span><h3>{frontStream.length} autres actualités à suivre</h3></div><p>Du plus récent au plus ancien · sources originales</p></header><div>{frontStream.map((article, index) => <article key={article.id}>
+            <b>{String(index + 6).padStart(2, '0')}</b><div><StoryMeta article={article} /><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3>{article.excerpt ? <p>{article.excerpt}</p> : null}<footer><span>{formatDate(article.publishedAt)}</span><a href={article.url} target="_blank" rel="noreferrer">Lire chez {article.source.name} ↗</a></footer></div>
+          </article>)}</div></section> : null}
         </div>
       ) : null}
 
@@ -120,4 +126,8 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
       {data ? <><nav className="page-turner" aria-label="Tourner les pages du bulletin"><button type="button" disabled={pageIndex === 0} onClick={() => turnPage(-1)}>← Page précédente</button><span>{page === FRONT_PAGE ? 'La Une' : page}</span><button type="button" disabled={pageIndex === pages.length - 1} onClick={() => turnPage(1)}>Page suivante →</button></nav><footer className="automatic-footer"><div><strong>Sélection automatisée · pas une validation éditoriale</strong><span>{data.ranking.method}</span><span>Aucune IA ne réécrit ou ne complète les faits des sources.</span></div><details><summary>{data.sources.length} sources suivies · {degradedSources ? `${degradedSources} dégradée(s)` : 'toutes disponibles'}</summary><div className="feed-source-list">{data.sources.map((source) => <a href={source.homepage} target="_blank" rel="noreferrer" key={source.id}><i data-state={source.status} /><span><strong>{source.name}</strong><small>{source.kind}</small></span></a>)}</div></details></footer></> : null}
     </section>
   );
+}
+
+function MonthlyPalantirFeature() {
+  return <section className="monthly-video-feature" aria-labelledby="monthly-video-title"><header><span>GRAND FORMAT · SEPTEMBRE 2026</span><strong>01</strong></header><div className="monthly-video-body"><div className="monthly-video-copy"><p className="feature-label">Documentaire / analyse vidéo</p><h2 id="monthly-video-title">Palantir et Maven Smart System : quand la donnée devient une capacité militaire</h2><p>Une vidéo pédagogique présente l’architecture publique du système Maven : fusion de données, analyse assistée par IA et accélération de la boucle de décision. OpenVigie distingue ici la démonstration technique de Palantir, les usages militaires revendiqués et les questions de contrôle humain, de transparence et de responsabilité.</p><div className="monthly-video-sources"><a href="https://www.youtube.com/watch?v=Ng9IvQzCoHs" target="_blank" rel="noreferrer">Vidéo source · Palantir’s Maven Smart System ↗</a><a href="https://investors.palantir.com/files/Palantir%20-%20Q1%202026%20Business%20Update.pdf" target="_blank" rel="noreferrer">Document de référence Palantir · MSS ↗</a></div></div><div className="monthly-video-player"><iframe src="https://www.youtube.com/embed/Ng9IvQzCoHs?rel=0" title="Palantir's Maven Smart System — analyse vidéo" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /><small>Lecteur YouTube · la vidéo est hébergée par son éditeur</small></div></div><footer>À lire avec recul : la vidéo explique une architecture et une démonstration publiques ; elle ne permet pas, à elle seule, d’établir les capacités réelles dans chaque théâtre d’opération.</footer></section>;
 }
