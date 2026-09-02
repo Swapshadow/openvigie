@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Cadence } from './bulletin-data';
 import type { LiveArticle, LiveBulletinResponse } from './bulletin-types';
+import { findProduct, findVendor } from './asset-catalog';
+import type { InventoryAsset, Vulnerability } from './vulnerability-types';
 
 const REFRESH_INTERVAL = 30 * 60 * 1000;
 const FRONT_PAGE = '__front__';
@@ -97,6 +99,8 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
         </nav>
       ) : null}
 
+      {page === FRONT_PAGE ? <ParkKevAlert /> : null}
+
       {error ? <div className="news-message news-error"><span aria-hidden="true">△</span><div><strong>Le journal n’a pas pu être chargé</strong><p>{error}</p></div><button type="button" onClick={() => void load()}>Réessayer</button></div> : null}
       {loading && (!data || !pageReady) ? <div className="news-message news-loading"><i /><div><strong>OpenVigie compose l’édition</strong><p>Les annonces majeures sont classées à partir des sources officielles.</p></div></div> : null}
       {!loading && !error && !lead ? <div className="news-message"><span aria-hidden="true">⌁</span><div><strong>Aucun article dans cette page</strong><p>Le collecteur poursuit sa synchronisation en arrière-plan.</p></div></div> : null}
@@ -126,6 +130,48 @@ export default function LiveBulletinFeed({ cadence }: { cadence: Cadence }) {
       {data ? <><nav className="page-turner" aria-label="Tourner les pages du bulletin"><button type="button" disabled={pageIndex === 0} onClick={() => turnPage(-1)}>← Page précédente</button><span>{page === FRONT_PAGE ? 'La Une' : page}</span><button type="button" disabled={pageIndex === pages.length - 1} onClick={() => turnPage(1)}>Page suivante →</button></nav><footer className="automatic-footer"><div><strong>Sélection automatisée · pas une validation éditoriale</strong><span>{data.ranking.method}</span><span>Aucune IA ne réécrit ou ne complète les faits des sources.</span></div><details><summary>{data.sources.length} sources suivies · {degradedSources ? `${degradedSources} dégradée(s)` : 'toutes disponibles'}</summary><div className="feed-source-list">{data.sources.map((source) => <a href={source.homepage} target="_blank" rel="noreferrer" key={source.id}><i data-state={source.status} /><span><strong>{source.name}</strong><small>{source.kind}</small></span></a>)}</div></details></footer></> : null}
     </section>
   );
+}
+
+type ParkAlert = { asset: InventoryAsset; vendor: string; product: string; vulnerability: Vulnerability };
+
+function ParkKevAlert() {
+  const [alerts, setAlerts] = useState<ParkAlert[]>([]);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      let inventory: InventoryAsset[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem('openvigie.inventory.v1') ?? '[]');
+        inventory = Array.isArray(parsed) ? parsed : [];
+      } catch { inventory = []; }
+      if (!inventory.length) { if (active) setChecked(true); return; }
+      const batches = await Promise.all(inventory.map(async (asset) => {
+        try {
+          const vendor = findVendor(asset.vendorId);
+          const product = findProduct(asset.vendorId, asset.productId);
+          const parameters = new URLSearchParams({ vendor: vendor.name, product: product.name, version: asset.version, part: product.part });
+          if (product.cpeVendor) parameters.set('cpeVendor', product.cpeVendor);
+          if (product.cpeProduct) parameters.set('cpeProduct', product.cpeProduct);
+          const response = await fetch(`/api/vulnerabilities?${parameters}`, { cache: 'no-store' });
+          if (!response.ok) return [];
+          const payload = await response.json() as { vulnerabilities?: Vulnerability[] };
+          return (payload.vulnerabilities ?? []).filter((item) => item.kev).map((vulnerability) => ({ asset, vendor: vendor.name, product: product.name, vulnerability }));
+        } catch { return []; }
+      }));
+      if (active) {
+        setAlerts(batches.flat().sort((a, b) => (b.vulnerability.score ?? 0) - (a.vulnerability.score ?? 0)).slice(0, 5));
+        setChecked(true);
+      }
+    };
+    void run();
+    const timer = window.setInterval(() => void run(), REFRESH_INTERVAL);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
+  if (!checked || !alerts.length) return null;
+  return <section className="park-kev-alert" aria-labelledby="park-kev-title"><header><div><span>ALERTE PARC · CISA KEV</span><h3 id="park-kev-title">Exploitation connue sur votre périmètre</h3></div><strong>{alerts.length} correspondance{alerts.length > 1 ? 's' : ''}</strong></header><div>{alerts.map(({ asset, vendor, product, vulnerability }) => <article key={`${asset.id}:${vulnerability.id}`}><span>{asset.label} · {vendor} {product} {asset.version}</span><h4><a href={`https://nvd.nist.gov/vuln/detail/${vulnerability.id}`} target="_blank" rel="noreferrer">{vulnerability.id} ↗</a></h4><p>{vulnerability.kev?.requiredAction}</p><footer><strong>CVSS {vulnerability.score ?? '—'}</strong><small>Échéance CISA : {vulnerability.kev?.dueDate || 'non fournie'}</small></footer></article>)}</div><footer>Règle déclenchée automatiquement : produit du parc + version déclarée + présence dans CISA KEV. Confirmez l’applicabilité dans l’avis éditeur.</footer></section>;
 }
 
 function MonthlyPalantirFeature() {
