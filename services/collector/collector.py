@@ -28,6 +28,8 @@ NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CISA_KEV_API = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 REFRESH_SECONDS = max(300, int(os.environ.get("OPENVIGIE_REFRESH_SECONDS", "86400")))
 FEED_REFRESH_SECONDS = max(1800, int(os.environ.get("OPENVIGIE_FEED_REFRESH_SECONDS", "10800")))
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434").rstrip("/")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct")
 HTTP_TIMEOUT = 25
 MAX_RESULTS = 100
 MAX_FEED_BYTES = 2_000_000
@@ -934,6 +936,300 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
     }
 
 
+def build_ai_news_brief(cadence: str, limit: int, topic: str = "") -> dict:
+    """Ask the local model to analyze already collected, attributed news."""
+    bulletin = build_bulletin(cadence, limit)
+    topic = re.sub(r"\s+", " ", topic).strip()[:160]
+    evidence = [
+        {
+            "title": article["title"],
+            "excerpt": article["excerpt"],
+            "publishedAt": article["publishedAt"],
+            "category": article["category"],
+            "source": article["source"]["name"],
+            "url": article["url"],
+            "cves": article["cves"],
+        }
+        for article in bulletin["articles"]
+    ]
+    if not evidence:
+        raise RuntimeError("Aucune actualité collectée à analyser")
+
+    system = (
+        "Tu es l'analyste de veille cyber d'OpenVigie. Tu ne navigues pas sur le Web : "
+        "tu analyses exclusivement les articles attribués fournis par le collecteur. "
+        "Rédige en français une synthèse concise et opérationnelle. Distingue faits, "
+        "signaux faibles et incertitudes. N'invente aucun fait, date, source ou URL. "
+        "Chaque point doit citer le nom de la source et conserver son URL. Signale "
+        "explicitement quand les éléments fournis ne permettent pas de conclure."
+    )
+    instruction = "Prépare le brief de veille"
+    if topic:
+        instruction += f" centré sur : {topic}"
+    instruction += ". Retourne du Markdown lisible, sans bloc de code.\n\nArticles JSON :\n"
+    request_body = json.dumps({
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": instruction + json.dumps(evidence, ensure_ascii=False)},
+        ],
+        "options": {"temperature": 0.2},
+    }, ensure_ascii=False).encode()
+    request = urllib.request.Request(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        data=request_body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            result = json.loads(response.read())
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Ollama indisponible : {error}") from error
+    content = result.get("message", {}).get("content", "").strip()
+    if not content:
+        raise RuntimeError("Ollama a retourné une réponse vide")
+    return {
+        "generatedAt": iso_timestamp(int(time.time())),
+        "cadence": cadence,
+        "topic": topic or None,
+        "model": OLLAMA_MODEL,
+        "analysis": content,
+        "evidence": evidence,
+        "notice": "Synthèse IA locale fondée uniquement sur les sources listées.",
+    }
+
+
+def build_ai_triage(cadence: str, limit: int, assets: list[dict]) -> dict:
+    """Return bulletin, asset matrix and alerts; factual rules always win."""
+    bulletin = build_bulletin(cadence, min(30, max(3, limit)))
+    articles = bulletin["articles"]
+    if not articles:
+        raise RuntimeError("Aucune actualité collectée à analyser")
+    safe_assets = []
+    for raw in assets[:100]:
+        if isinstance(raw, dict):
+            safe_assets.append({key: clean_excerpt(str(raw.get(key, "")), 120) for key in
+                                ("id", "label", "vendor", "product", "version", "exposure")})
+    evidence = [{
+        "id": item["id"], "title": item["title"], "excerpt": item["excerpt"],
+        "publishedAt": item["publishedAt"], "categoryRule": item["category"],
+        "source": item["source"]["name"], "url": item["url"], "cvesRule": item["cves"],
+    } for item in articles]
+    prompt = (
+        "Analyse uniquement ce JSON et retourne un objet JSON valide avec la clé items. "
+        "Un item par article, identifié par id, contient: cluster, classification parmi "
+        "menace/vulnerabilite/detection/conformite/autre, resumeFr (2 phrases), vendors, products, "
+        "versions, apt, iocs, relevanceAi (0-100), priorityAi (0-100), rationale. "
+        "N'invente rien et utilise des tableaux vides si absent. cvesRule et categoryRule sont "
+        "des faits immuables. Les actifs servent uniquement à estimer la pertinence.\n" +
+        json.dumps({"articles": evidence, "assets": safe_assets}, ensure_ascii=False)
+    )
+    body = json.dumps({
+        "model": OLLAMA_MODEL, "stream": False, "format": "json",
+        "messages": [{"role": "system", "content": "Tu es le moteur local de tri cyber d'OpenVigie. Réponds exclusivement en JSON."},
+                     {"role": "user", "content": prompt}],
+        "options": {"temperature": 0.1},
+    }, ensure_ascii=False).encode()
+    request = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/chat", data=body,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            outer = json.loads(response.read())
+        ai_payload = json.loads(outer.get("message", {}).get("content", "{}"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Ollama indisponible ou réponse invalide : {error}") from error
+    ai_by_id = {str(item.get("id")): item for item in ai_payload.get("items", []) if isinstance(item, dict)}
+    try:
+        kev, kev_status = get_kev(), "online"
+    except Exception:
+        kev, kev_status = {}, "degraded"
+    triage, matrix = [], []
+    for article in articles:
+        ai = ai_by_id.get(article["id"], {})
+        text = normalized_search_text(f"{article['title']} {article['excerpt']}")
+        asset_hits = []
+        for asset in safe_assets:
+            vendor, product = normalized_search_text(asset["vendor"]), normalized_search_text(asset["product"])
+            version = normalized_search_text(asset["version"])
+            if product and product in text and (not vendor or vendor in text):
+                asset_hits.append({**asset, "versionMentioned": bool(version and version in text)})
+        cves = article["cves"]
+        kev_cves = [cve for cve in cves if cve in kev]
+        try:
+            ai_priority = min(100, max(0, int(ai.get("priorityAi", 0) or 0)))
+        except (TypeError, ValueError):
+            ai_priority = 0
+        rule_floor = 100 if kev_cves and asset_hits else 92 if kev_cves else 85 if cves and asset_hits else 0
+        priority = max(ai_priority, rule_floor)
+        reasons = (["CISA KEV : exploitation connue"] if kev_cves else []) + \
+                  (["éditeur et produit présents dans le parc"] if asset_hits else []) + \
+                  (["CVE extraite par le collecteur"] if cves else [])
+        if not reasons:
+            reasons = [str(ai.get("rationale", "Priorité proposée par le tri IA local"))[:300]]
+        item = {
+            "id": article["id"], "title": article["title"], "url": article["url"],
+            "source": article["source"], "publishedAt": article["publishedAt"],
+            "cluster": str(ai.get("cluster", article["id"]))[:100],
+            "classification": str(ai.get("classification", "autre"))[:40],
+            "summaryFr": str(ai.get("resumeFr", article["excerpt"]))[:900],
+            "entities": {"cves": cves, "vendors": ai.get("vendors", []), "products": ai.get("products", []),
+                         "versions": ai.get("versions", []), "apt": ai.get("apt", []), "iocs": ai.get("iocs", [])},
+            "assets": asset_hits, "kevCves": kev_cves, "priority": priority,
+            "prioritySource": "rules" if rule_floor >= ai_priority and rule_floor else "ai",
+            "priorityExplanation": " · ".join(reasons),
+        }
+        triage.append(item)
+        if asset_hits or kev_cves:
+            matrix.append(item)
+    triage.sort(key=lambda item: item["priority"], reverse=True)
+    matrix.sort(key=lambda item: item["priority"], reverse=True)
+    alerts = [item for item in matrix if item["priority"] >= 85]
+    seen, deduplicated = set(), []
+    for item in triage:
+        if item["cluster"] not in seen:
+            seen.add(item["cluster"])
+            deduplicated.append(item)
+    return {
+        "generatedAt": iso_timestamp(int(time.time())), "cadence": cadence, "model": OLLAMA_MODEL,
+        "bulletin": deduplicated, "matrix": matrix, "alerts": alerts,
+        "stats": {"analyzed": len(triage), "afterDeduplication": len(deduplicated),
+                  "assetMatches": len(matrix), "alerts": len(alerts)},
+        "rules": {"precedence": "CVE, parc et CISA KEV priment toujours sur le score IA", "kevStatus": kev_status},
+        "sources": bulletin["sources"],
+    }
+
+
+VIGI_SYSTEM = (
+    "Tu es Vigi, l'assistant de veille cyber d'OpenVigie. Tu réponds en français, de "
+    "façon concise et opérationnelle. Tu ne navigues pas sur le Web : tu t'appuies "
+    "uniquement sur le contexte factuel fourni (bulletin OpenVigie, parc déclaré par "
+    "l'utilisateur) et sur l'historique de la conversation. N'invente jamais de CVE, "
+    "de source, d'URL, de date, d'éditeur ni de version. Quand tu cites un article, "
+    "indique le nom de sa source. Les CVE et les catégories fournies sont des faits "
+    "immuables : ne les minimise pas. Si le contexte ne permet pas de conclure, dis-le "
+    "explicitement et oriente vers la bonne section d'OpenVigie (Le Bulletin, Mon parc, "
+    "Plan de veille, Recherche approfondie)."
+)
+
+VIGI_CONTEXT_HINTS = (
+    "bulletin", "vulnerab", "cve", "faille", "exploit", "kev", "parc", "correctif",
+    "patch", "menace", "ransomware", "apt", "avis", "alerte", "editeur", "campagne",
+    "0day", "zero day", "zero-day", "actualite", "news", "majeur", "priorite",
+)
+
+
+def _vigi_wants_bulletin(text: str) -> bool:
+    """True when the user's question should be grounded on the live bulletin."""
+    needle = normalized_search_text(text)
+    return any(hint in needle for hint in VIGI_CONTEXT_HINTS)
+
+
+def build_vigi_reply(messages: list[dict], assets: list[dict], cadence: str = "daily") -> dict:
+    """Vigi chatbot: grounded local answers over the OpenVigie bulletin and parc."""
+    if cadence not in ("daily", "weekly", "monthly"):
+        cadence = "daily"
+    history: list[dict] = []
+    for entry in messages[-12:]:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role")
+        content = re.sub(r"\s+", " ", str(entry.get("content", ""))).strip()[:2000]
+        if role in ("user", "assistant") and content:
+            history.append({"role": role, "content": content})
+    if not history or history[-1]["role"] != "user":
+        raise ValueError("Le dernier message doit provenir de l'utilisateur")
+    last_user = history[-1]["content"]
+
+    safe_assets = []
+    for raw in assets[:60]:
+        if isinstance(raw, dict):
+            entry = {key: clean_excerpt(str(raw.get(key, "")), 80)
+                     for key in ("label", "vendor", "product", "version", "exposure")}
+            if entry["product"] or entry["vendor"]:
+                safe_assets.append(entry)
+
+    context_blocks: list[str] = []
+    used_sources: list[dict] = []
+    used_bulletin = False
+    if _vigi_wants_bulletin(last_user):
+        bulletin = build_bulletin(cadence, 8)
+        evidence = []
+        for article in bulletin["articles"][:8]:
+            evidence.append({
+                "titre": article["title"],
+                "resume": clean_excerpt(article["excerpt"], 420),
+                "categorie": article["category"],
+                "cves": article["cves"],
+                "source": article["source"]["name"],
+                "url": article["url"],
+                "publieLe": article["publishedAt"],
+            })
+            used_sources.append({"name": article["source"]["name"], "url": article["url"]})
+        if evidence:
+            used_bulletin = True
+            context_blocks.append(
+                f"Bulletin OpenVigie ({cadence}), articles attribués les plus récents :\n"
+                + json.dumps(evidence, ensure_ascii=False)
+            )
+    if safe_assets:
+        context_blocks.append(
+            "Parc déclaré par l'utilisateur (marque, produit, version) :\n"
+            + json.dumps(safe_assets, ensure_ascii=False)
+        )
+
+    system = VIGI_SYSTEM
+    if context_blocks:
+        system += "\n\nContexte factuel — ne rien affirmer au-delà :\n" + "\n\n".join(context_blocks)
+    else:
+        system += (
+            "\n\nAucun contexte spécifique n'a été chargé pour ce message. Réponds "
+            "brièvement et invite l'utilisateur à préciser sa question sur le bulletin "
+            "ou sur son parc."
+        )
+
+    request_body = json.dumps({
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "messages": [{"role": "system", "content": system}, *history],
+        "options": {"temperature": 0.2, "num_predict": 600},
+    }, ensure_ascii=False).encode()
+    request = urllib.request.Request(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        data=request_body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=240) as response:
+            result = json.loads(response.read())
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Vigi (IA locale) indisponible : {error}") from error
+    reply = result.get("message", {}).get("content", "").strip()
+    if not reply:
+        raise RuntimeError("Vigi a retourné une réponse vide")
+
+    seen: set[str] = set()
+    sources = []
+    for item in used_sources:
+        if item["url"] and item["url"] not in seen:
+            seen.add(item["url"])
+            sources.append(item)
+    return {
+        "generatedAt": iso_timestamp(int(time.time())),
+        "model": OLLAMA_MODEL,
+        "reply": reply,
+        "usedContext": {
+            "bulletin": used_bulletin,
+            "cadence": cadence if used_bulletin else None,
+            "assets": len(safe_assets),
+        },
+        "sources": sources,
+        "notice": "Réponse IA locale fondée uniquement sur le bulletin et le parc fournis.",
+    }
+
+
 def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str = "", sort: str = "recent") -> dict:
     """Search the local archive, then complement it with live attributed web news."""
     query = re.sub(r"\s+", " ", query).strip()[:240]
@@ -1510,6 +1806,21 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"bulletin error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne du bulletin"})
             return
+        if parsed.path == "/ai/news-brief":
+            try:
+                parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                cadence = parameters.get("cadence", ["daily"])[0]
+                topic = parameters.get("topic", [""])[0]
+                limit = min(20, max(3, int(parameters.get("limit", ["12"])[0])))
+                self.send_json(200, build_ai_news_brief(cadence, limit, topic))
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except RuntimeError as error:
+                self.send_json(503, {"error": str(error)})
+            except Exception as error:
+                print(f"AI news brief error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne de la synthèse IA"})
+            return
         if parsed.path == "/search":
             try:
                 parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
@@ -1554,6 +1865,52 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:
             print(f"collector error: {error}", flush=True)
             self.send_json(500, {"error": "Erreur interne du collecteur"})
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/ai/chat":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 200_000:
+                    raise ValueError("Corps de requête trop volumineux")
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                messages = payload.get("messages", [])
+                if not isinstance(messages, list) or not messages:
+                    raise ValueError("messages doit être une liste non vide")
+                assets = payload.get("assets", [])
+                if not isinstance(assets, list):
+                    raise ValueError("assets doit être une liste")
+                cadence = str(payload.get("cadence", "daily"))
+                self.send_json(200, build_vigi_reply(messages, assets, cadence))
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json(400, {"error": str(error)})
+            except RuntimeError as error:
+                self.send_json(503, {"error": str(error)})
+            except Exception as error:
+                print(f"Vigi chat error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne de Vigi"})
+            return
+        if path != "/ai/triage":
+            self.send_json(404, {"error": "Route inconnue"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 0 or length > 200_000:
+                raise ValueError("Corps de requête trop volumineux")
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            cadence = str(payload.get("cadence", "daily"))
+            limit = min(30, max(3, int(payload.get("limit", 12))))
+            assets = payload.get("assets", [])
+            if not isinstance(assets, list):
+                raise ValueError("assets doit être une liste")
+            self.send_json(200, build_ai_triage(cadence, limit, assets))
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json(400, {"error": str(error)})
+        except RuntimeError as error:
+            self.send_json(503, {"error": str(error)})
+        except Exception as error:
+            print(f"AI triage error: {error}", flush=True)
+            self.send_json(500, {"error": "Erreur interne du tri IA"})
 
     def do_DELETE(self) -> None:  # noqa: N802
         if urllib.parse.urlparse(self.path).path != "/vulnerabilities":

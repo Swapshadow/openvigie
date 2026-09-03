@@ -7,6 +7,7 @@ import LiveBulletinFeed from './live-bulletin-feed';
 import DeepSearch from './deep-search';
 import LeakToday from './leak-today';
 import SurveillanceMatrix from './surveillance-matrix';
+import VigiChat from './vigi-chat';
 
 type View = 'bulletin' | 'leaks' | 'assets' | 'matrix' | 'search';
 
@@ -113,6 +114,8 @@ export default function Home() {
           <SurveillanceMatrix />
         ) : <DeepSearch />}
       </div>
+
+      <VigiChat cadence={cadence} />
     </main>
   );
 }
