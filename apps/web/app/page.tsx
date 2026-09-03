@@ -7,14 +7,16 @@ import LiveBulletinFeed from './live-bulletin-feed';
 import DeepSearch from './deep-search';
 import LeakToday from './leak-today';
 import SurveillanceMatrix from './surveillance-matrix';
+import BulletinUnified from './bulletin-unified';
 import VigiChat from './vigi-chat';
 
-type View = 'bulletin' | 'leaks' | 'assets' | 'matrix' | 'search';
+type View = 'unified' | 'bulletin' | 'leaks' | 'assets' | 'matrix' | 'search';
 
 type IconName = View | 'radar' | 'notifications';
 
 function AppIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
+    unified: <><path d="M4 6.5h7M4 11h7M4 15.5h5" /><path d="M14.5 5.5h5.5v13h-5.5z" /><path d="M16 8.5h2.5M16 11.5h2.5M16 14.5h1.5" /></>,
     bulletin: <><path d="M6.5 4.5h8.25A2.25 2.25 0 0 1 17 6.75v12.75H6.5A2.5 2.5 0 0 1 4 17V7a2.5 2.5 0 0 1 2.5-2.5Z" /><path d="M8 8h5M8 11.5h5M8 15h3.5M17 7h.5A2.5 2.5 0 0 1 20 9.5V17a2.5 2.5 0 0 1-2.5 2.5H17" /></>,
     leaks: <><path d="M12 3.5s5.25 5.75 5.25 10a5.25 5.25 0 0 1-10.5 0c0-4.25 5.25-10 5.25-10Z" /><path d="M9.5 14.25a2.5 2.5 0 0 0 2.5 2.5" /></>,
     assets: <><rect x="3.5" y="5" width="17" height="14" rx="2.5" /><path d="M8 19v2M16 19v2M8.5 9.5h7M8.5 13h4.5" /><circle cx="17" cy="13" r="1" fill="currentColor" stroke="none" /></>,
@@ -28,7 +30,7 @@ function AppIcon({ name }: { name: IconName }) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<View>('bulletin');
+  const [view, setView] = useState<View>('unified');
   const [cadence, setCadence] = useState<Cadence>('daily');
   const issue = issues[cadence];
 
@@ -58,6 +60,7 @@ export default function Home() {
           <p className="eyebrow">Navigation</p>
           <nav className="nav-list">
             {[
+              ['unified', 'Bulletin unifié'],
               ['bulletin', 'Le Bulletin'],
               ['leaks', 'Leak today?'],
               ['assets', 'Mon parc'],
@@ -83,7 +86,9 @@ export default function Home() {
           </div>
         </aside>
 
-        {view === 'bulletin' ? (
+        {view === 'unified' ? (
+          <BulletinUnified />
+        ) : view === 'bulletin' ? (
           <section className="content bulletin" id="main-content">
             <header className="bulletin-masthead glass-panel">
               <div className="bulletin-kicker">{issue.kicker}</div>

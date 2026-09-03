@@ -279,6 +279,30 @@ FEED_SOURCES = (
         "kind": "Presse cybersécurité française", "default_category": "Cybercriminalité",
         "priority": 8, "filter": "all", "license": "Titre et extrait court avec attribution",
     },
+    {
+        "id": "openai-news", "name": "OpenAI",
+        "feed_url": "https://openai.com/news/rss.xml", "homepage": "https://openai.com/news/",
+        "kind": "Éditeur IA · annonces", "default_category": "IA · modèles & plateformes",
+        "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "google-deepmind", "name": "Google DeepMind",
+        "feed_url": "https://deepmind.google/blog/rss.xml", "homepage": "https://deepmind.google/discover/blog/",
+        "kind": "Laboratoire IA · recherche", "default_category": "IA · modèles & plateformes",
+        "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "mistral-ai", "name": "Mistral AI",
+        "feed_url": "https://mistral.ai/rss.xml", "homepage": "https://mistral.ai/news",
+        "kind": "Éditeur IA européen · annonces", "default_category": "IA · modèles & plateformes",
+        "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "hugging-face", "name": "Hugging Face",
+        "feed_url": "https://huggingface.co/blog/feed.xml", "homepage": "https://huggingface.co/blog",
+        "kind": "Écosystème IA ouvert", "default_category": "IA · modèles & plateformes",
+        "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
 )
 
 CATEGORY_RULES = (
@@ -292,6 +316,19 @@ CATEGORY_RULES = (
     ("Cybercriminalité", ("ransomware", "malware", "botnet", "phishing", "fraud", "cybercrime", "cyber crime", "cryptocurrency theft", "crypto laundering", "infostealer")),
     ("Presse & lanceurs d’alerte", ("journalist", "journalism", "press freedom", "whistleblower", "source protection", "securedrop", "reporter", "media freedom")),
     ("Vie privée & droits numériques", ("privacy", "digital rights", "encryption", "censorship", "internet shutdown", "freedom of expression", "civil liberties", "data protection")),
+    ("IA · modèles & plateformes", (
+        "anthropic", "claude opus", "claude sonnet", "claude haiku", "claude fable",
+        "claude code", "claude ai", "model context protocol",
+        "openai", "chatgpt", "gpt-4", "gpt-5", "gpt5", "codex",
+        "google deepmind", "deepmind", "google gemini", "gemini pro", "gemini ultra",
+        "gemini model", "gemini 3", "astra model", "project astra",
+        "mistral ai", "le chat mistral", "magistral", "codestral",
+        "hugging face", "huggingface", "transformers library",
+        "llama 3", "llama 4", "meta llama", "grok xai", "xai grok",
+        "large language model", "llm ", " llm", "foundation model", "frontier model",
+        "prompt injection", "jailbreak llm", "ai agent", "agentic ai", "rag pipeline",
+        "inference api", "open weights", "model weights", "fine-tuning",
+    )),
     ("IA & souveraineté", ("artificial intelligence", " ai ", "machine learning", "digital sovereignty", "sovereignty", "cloud act", "platform regulation", "dma", "dsa")),
 )
 
@@ -382,6 +419,45 @@ def initialize_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vigi_cache (
+              cache_key TEXT PRIMARY KEY,
+              payload_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_vigi_cache_created ON vigi_cache(created_at)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS watch_alerts (
+              id TEXT PRIMARY KEY,
+              label TEXT NOT NULL,
+              severity TEXT NOT NULL,
+              vendor TEXT NOT NULL DEFAULT '',
+              product TEXT NOT NULL DEFAULT '',
+              version TEXT NOT NULL DEFAULT '',
+              keywords_json TEXT NOT NULL DEFAULT '[]',
+              status TEXT NOT NULL DEFAULT 'active',
+              snoozed_until INTEGER,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS watch_alert_actions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              alert_id TEXT NOT NULL,
+              action TEXT NOT NULL,
+              note TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_alert_actions ON watch_alert_actions(alert_id, created_at DESC)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_articles_category_published ON articles(category, published_at DESC)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_feeds_next_refresh ON feed_runs(next_refresh)")
@@ -909,12 +985,13 @@ def update_watch_source_schedules(items: object) -> list[dict]:
 
 def bulletin_window(cadence: str) -> tuple[int, str]:
     windows = {
+        "today": (24 * 3600, "Les dernières 24 heures"),
         "daily": (48 * 3600, "Les dernières 48 heures"),
         "weekly": (8 * 86400, "Les 8 derniers jours"),
         "monthly": (35 * 86400, "Les 35 derniers jours"),
     }
     if cadence not in windows:
-        raise ValueError("cadence doit être daily, weekly ou monthly")
+        raise ValueError("cadence doit être today, daily, weekly ou monthly")
     return windows[cadence]
 
 
@@ -1007,6 +1084,257 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
             "method": "Classement automatique par fraîcheur, autorité de la source et signaux CVE, avec diversité des sources.",
             "warning": "Ce classement ne constitue pas une validation éditoriale ni une preuve de véracité.",
         },
+    }
+
+
+ALERT_SEVERITIES = ("critical", "high", "medium", "low")
+ALERT_SEVERITY_RANK = {name: index for index, name in enumerate(ALERT_SEVERITIES)}
+ALERT_STATUSES = ("active", "patched", "ignored", "snoozed")
+ALERT_ACTIONS = {"patch": "patched", "ignore": "ignored", "snooze": "snoozed", "reopen": "active"}
+ALERT_MATCH_WINDOW = 14 * 86400
+SNOOZE_SECONDS = 7 * 86400
+
+
+def _alert_row_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "label": row["label"],
+        "severity": row["severity"],
+        "vendor": row["vendor"],
+        "product": row["product"],
+        "version": row["version"],
+        "keywords": json.loads(row["keywords_json"] or "[]"),
+        "status": row["status"],
+        "snoozedUntil": iso_timestamp(row["snoozed_until"]) if row["snoozed_until"] else None,
+        "createdAt": iso_timestamp(row["created_at"]),
+        "updatedAt": iso_timestamp(row["updated_at"]),
+    }
+
+
+def create_watch_alert(payload: dict) -> dict:
+    label = clean_excerpt(str(payload.get("label", "")), 120).strip()
+    if not label:
+        raise ValueError("label est requis")
+    severity = str(payload.get("severity", "medium")).lower()
+    if severity not in ALERT_SEVERITIES:
+        raise ValueError(f"severity doit être parmi {', '.join(ALERT_SEVERITIES)}")
+    keywords = payload.get("keywords", [])
+    if not isinstance(keywords, list):
+        raise ValueError("keywords doit être une liste")
+    cleaned_keywords = [clean_excerpt(str(item), 60).strip() for item in keywords[:12]]
+    cleaned_keywords = [item for item in cleaned_keywords if item]
+    vendor = clean_excerpt(str(payload.get("vendor", "")), 80).strip()
+    product = clean_excerpt(str(payload.get("product", "")), 80).strip()
+    version = clean_excerpt(str(payload.get("version", "")), 60).strip()
+    if not (vendor or product or cleaned_keywords):
+        raise ValueError("Renseigne au moins un éditeur, un produit ou un mot-clé")
+
+    now = int(time.time())
+    alert_id = hashlib.sha256(f"{label}|{vendor}|{product}|{version}|{now}".encode()).hexdigest()[:16]
+    with database_lock, connect() as connection:
+        connection.execute(
+            "INSERT INTO watch_alerts(id, label, severity, vendor, product, version, keywords_json,"
+            " status, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+            (alert_id, label, severity, vendor, product, version,
+             json.dumps(cleaned_keywords, ensure_ascii=False), now, now),
+        )
+        connection.execute(
+            "INSERT INTO watch_alert_actions(alert_id, action, note, created_at) VALUES(?, 'created', ?, ?)",
+            (alert_id, f"Alerte créée ({severity})", now),
+        )
+        row = connection.execute("SELECT * FROM watch_alerts WHERE id = ?", (alert_id,)).fetchone()
+    return _alert_row_to_dict(row)
+
+
+def apply_watch_alert_action(alert_id: str, action: str, note: str = "") -> dict:
+    alert_id = clean_excerpt(str(alert_id), 40).strip()
+    action = str(action).lower()
+    if action not in ALERT_ACTIONS:
+        raise ValueError(f"action doit être parmi {', '.join(ALERT_ACTIONS)}")
+    now = int(time.time())
+    status = ALERT_ACTIONS[action]
+    snoozed_until = now + SNOOZE_SECONDS if action == "snooze" else None
+    with database_lock, connect() as connection:
+        existing = connection.execute("SELECT id FROM watch_alerts WHERE id = ?", (alert_id,)).fetchone()
+        if not existing:
+            raise ValueError("Alerte inconnue")
+        connection.execute(
+            "UPDATE watch_alerts SET status = ?, snoozed_until = ?, updated_at = ? WHERE id = ?",
+            (status, snoozed_until, now, alert_id),
+        )
+        connection.execute(
+            "INSERT INTO watch_alert_actions(alert_id, action, note, created_at) VALUES(?, ?, ?, ?)",
+            (alert_id, action, clean_excerpt(str(note), 200), now),
+        )
+        row = connection.execute("SELECT * FROM watch_alerts WHERE id = ?", (alert_id,)).fetchone()
+    return _alert_row_to_dict(row)
+
+
+def delete_watch_alert(alert_id: str) -> None:
+    alert_id = clean_excerpt(str(alert_id), 40).strip()
+    with database_lock, connect() as connection:
+        connection.execute("DELETE FROM watch_alert_actions WHERE alert_id = ?", (alert_id,))
+        connection.execute("DELETE FROM watch_alerts WHERE id = ?", (alert_id,))
+
+
+def _match_alert_against_articles(alert: dict, rows: list[sqlite3.Row], kev: dict) -> list[dict]:
+    """Rule-based match. Never softens a severity, only reports evidence."""
+    vendor = normalized_search_text(alert["vendor"])
+    product = normalized_search_text(alert["product"])
+    version = normalized_search_text(alert["version"])
+    keywords = [normalized_search_text(item) for item in alert["keywords"] if item]
+    matches = []
+    for row in rows:
+        text = normalized_search_text(f"{row['title']} {row['summary']}")
+        reasons = []
+        if product and product in text:
+            reasons.append(f"produit « {alert['product']} » cité")
+        if vendor and vendor in text:
+            reasons.append(f"éditeur « {alert['vendor']} » cité")
+        hit_keywords = [alert["keywords"][index] for index, needle in enumerate(keywords) if needle and needle in text]
+        if hit_keywords:
+            reasons.append("mots-clés : " + ", ".join(hit_keywords[:4]))
+        if not reasons:
+            continue
+        # A vendor-only hit is too weak when a product was specified.
+        if product and product not in text and not hit_keywords:
+            continue
+        cves = json.loads(row["cves_json"] or "[]")
+        kev_cves = [cve for cve in cves if cve in kev]
+        matches.append({
+            "articleId": row["id"],
+            "title": row["title"],
+            "url": row["url"],
+            "source": row["source_name"],
+            "category": row["category"],
+            "publishedAt": iso_timestamp(row["published_at"]),
+            "cves": cves,
+            "kevCves": kev_cves,
+            "versionMentioned": bool(version and version in text),
+            "reasons": reasons,
+        })
+    matches.sort(key=lambda item: (bool(item["kevCves"]), item["publishedAt"] or ""), reverse=True)
+    return matches[:8]
+
+
+def build_watch_alerts() -> dict:
+    """Alerts grouped by severity, each auto-checked against the recent bulletin."""
+    now = int(time.time())
+    cutoff = now - ALERT_MATCH_WINDOW
+    with database_lock, connect() as connection:
+        # A snooze that has elapsed returns the alert to the active set.
+        connection.execute(
+            "UPDATE watch_alerts SET status = 'active', snoozed_until = NULL, updated_at = ?"
+            " WHERE status = 'snoozed' AND snoozed_until IS NOT NULL AND snoozed_until <= ?",
+            (now, now),
+        )
+        alert_rows = connection.execute(
+            "SELECT * FROM watch_alerts ORDER BY created_at DESC"
+        ).fetchall()
+        article_rows = connection.execute(
+            "SELECT id, title, summary, url, source_name, category, published_at, cves_json"
+            " FROM articles WHERE published_at >= ? ORDER BY published_at DESC LIMIT 400",
+            (cutoff,),
+        ).fetchall()
+        action_rows = connection.execute(
+            "SELECT alert_id, action, note, created_at FROM watch_alert_actions"
+            " ORDER BY created_at DESC LIMIT 400"
+        ).fetchall()
+
+    try:
+        kev, kev_status = get_kev(), "online"
+    except Exception:
+        kev, kev_status = {}, "degraded"
+
+    timeline: dict[str, list[dict]] = {}
+    for row in action_rows:
+        timeline.setdefault(row["alert_id"], []).append({
+            "action": row["action"],
+            "note": row["note"],
+            "at": iso_timestamp(row["created_at"]),
+        })
+
+    alerts = []
+    for row in alert_rows:
+        alert = _alert_row_to_dict(row)
+        matches = _match_alert_against_articles(alert, article_rows, kev) if alert["status"] == "active" else []
+        kev_hit = any(match["kevCves"] for match in matches)
+        alert["matches"] = matches
+        alert["matchCount"] = len(matches)
+        # Factual escalation only: KEV evidence can raise, never lower, the severity.
+        alert["effectiveSeverity"] = "critical" if kev_hit else alert["severity"]
+        alert["escalated"] = kev_hit and alert["severity"] != "critical"
+        alert["timeline"] = timeline.get(alert["id"], [])[:12]
+        alerts.append(alert)
+
+    grouped = {name: [] for name in ALERT_SEVERITIES}
+    for alert in alerts:
+        grouped[alert["effectiveSeverity"]].append(alert)
+    for name in grouped:
+        grouped[name].sort(key=lambda item: (-item["matchCount"], item["label"].lower()))
+
+    active = [alert for alert in alerts if alert["status"] == "active"]
+    return {
+        "generatedAt": iso_timestamp(now),
+        "window": {"days": ALERT_MATCH_WINDOW // 86400, "articles": len(article_rows)},
+        "severities": list(ALERT_SEVERITIES),
+        "grouped": grouped,
+        "alerts": alerts,
+        "stats": {
+            "total": len(alerts),
+            "active": len(active),
+            "matching": len([alert for alert in active if alert["matchCount"]]),
+            "escalated": len([alert for alert in alerts if alert["escalated"]]),
+            **{name: len(grouped[name]) for name in ALERT_SEVERITIES},
+        },
+        "rules": {
+            "precedence": "CISA KEV et les CVE du collecteur priment : ils peuvent élever une sévérité, jamais l'abaisser.",
+            "kevStatus": kev_status,
+        },
+    }
+
+
+def build_unified_bulletin(cadence: str, limit: int) -> dict:
+    """One feed for every source, with category facets scoped to the same window.
+
+    build_bulletin exposes all-time category counts, which cannot drive filters on
+    a windowed list. Here the facets count exactly what the window contains.
+    """
+    window_seconds, _ = bulletin_window(cadence)
+    cutoff = int(time.time()) - window_seconds
+    bulletin = build_bulletin(cadence, limit)
+
+    with database_lock, connect() as connection:
+        rows = connection.execute(
+            "SELECT category, COUNT(*) AS count FROM articles WHERE published_at >= ?"
+            " GROUP BY category ORDER BY count DESC, category",
+            (cutoff,),
+        ).fetchall()
+    windowed = [{"name": row["category"], "count": row["count"]} for row in rows]
+    if bulletin["archiveFallback"] or not windowed:
+        # No article inside the window: facet the archive actually being shown.
+        counter: dict[str, int] = {}
+        for article in bulletin["articles"]:
+            counter[article["category"]] = counter.get(article["category"], 0) + 1
+        windowed = sorted(
+            ({"name": name, "count": count} for name, count in counter.items()),
+            key=lambda item: (-item["count"], item["name"]),
+        )
+
+    selected_counts: dict[str, int] = {}
+    for article in bulletin["articles"]:
+        selected_counts[article["category"]] = selected_counts.get(article["category"], 0) + 1
+
+    return {
+        **bulletin,
+        "categories": windowed,
+        "selectedCategories": sorted(
+            ({"name": name, "count": count} for name, count in selected_counts.items()),
+            key=lambda item: (-item["count"], item["name"]),
+        ),
+        "totalInWindow": sum(item["count"] for item in windowed),
+        "returned": len(bulletin["articles"]),
+        "limit": limit,
     }
 
 
@@ -1194,15 +1522,61 @@ VIGI_CONTEXT_HINTS = (
 )
 
 
+VIGI_CACHE_TTL = 3600
+VIGI_EVIDENCE_LIMIT = 3
+VIGI_NUM_PREDICT = 200
+
+
 def _vigi_wants_bulletin(text: str) -> bool:
     """True when the user's question should be grounded on the live bulletin."""
     needle = normalized_search_text(text)
     return any(hint in needle for hint in VIGI_CONTEXT_HINTS)
 
 
+def _vigi_cache_key(question: str, assets: list[dict], cadence: str) -> str:
+    """Same question + same parc + same window + same model = same answer."""
+    fingerprint = json.dumps(
+        {
+            "q": normalized_search_text(question).strip(),
+            "assets": sorted(f"{item['vendor']}|{item['product']}|{item['version']}" for item in assets),
+            "cadence": cadence,
+            "model": OLLAMA_MODEL,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(fingerprint.encode()).hexdigest()
+
+
+def read_vigi_cache(key: str) -> dict | None:
+    cutoff = int(time.time()) - VIGI_CACHE_TTL
+    with database_lock, connect() as connection:
+        connection.execute("DELETE FROM vigi_cache WHERE created_at < ?", (cutoff,))
+        row = connection.execute(
+            "SELECT payload_json FROM vigi_cache WHERE cache_key = ? AND created_at >= ?",
+            (key, cutoff),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["payload_json"])
+    except json.JSONDecodeError:
+        return None
+
+
+def write_vigi_cache(key: str, payload: dict) -> None:
+    with database_lock, connect() as connection:
+        connection.execute(
+            "INSERT INTO vigi_cache(cache_key, payload_json, created_at) VALUES(?, ?, ?)"
+            " ON CONFLICT(cache_key) DO UPDATE SET payload_json=excluded.payload_json,"
+            " created_at=excluded.created_at",
+            (key, json.dumps(payload, ensure_ascii=False), int(time.time())),
+        )
+
+
 def build_vigi_reply(messages: list[dict], assets: list[dict], cadence: str = "daily") -> dict:
     """Vigi chatbot: grounded local answers over the OpenVigie bulletin and parc."""
-    if cadence not in ("daily", "weekly", "monthly"):
+    if cadence not in ("today", "daily", "weekly", "monthly"):
         cadence = "daily"
     history: list[dict] = []
     for entry in messages[-12:]:
@@ -1224,16 +1598,21 @@ def build_vigi_reply(messages: list[dict], assets: list[dict], cadence: str = "d
             if entry["product"] or entry["vendor"]:
                 safe_assets.append(entry)
 
+    cache_key = _vigi_cache_key(last_user, safe_assets, cadence)
+    cached = read_vigi_cache(cache_key)
+    if cached is not None:
+        return {**cached, "cached": True}
+
     context_blocks: list[str] = []
     used_sources: list[dict] = []
     used_bulletin = False
     if _vigi_wants_bulletin(last_user):
-        bulletin = build_bulletin(cadence, 8)
+        bulletin = build_bulletin(cadence, VIGI_EVIDENCE_LIMIT)
         evidence = []
-        for article in bulletin["articles"][:8]:
+        for article in bulletin["articles"][:VIGI_EVIDENCE_LIMIT]:
             evidence.append({
                 "titre": article["title"],
-                "resume": clean_excerpt(article["excerpt"], 420),
+                "resume": clean_excerpt(article["excerpt"], 240),
                 "categorie": article["category"],
                 "cves": article["cves"],
                 "source": article["source"]["name"],
@@ -1267,7 +1646,8 @@ def build_vigi_reply(messages: list[dict], assets: list[dict], cadence: str = "d
         "model": OLLAMA_MODEL,
         "stream": False,
         "messages": [{"role": "system", "content": system}, *history],
-        "options": {"temperature": 0.2, "num_predict": 600},
+        "options": {"temperature": 0.2, "num_predict": VIGI_NUM_PREDICT},
+        "keep_alive": "30m",
     }, ensure_ascii=False).encode()
     request = urllib.request.Request(
         f"{OLLAMA_BASE_URL}/api/chat",
@@ -1290,7 +1670,7 @@ def build_vigi_reply(messages: list[dict], assets: list[dict], cadence: str = "d
         if item["url"] and item["url"] not in seen:
             seen.add(item["url"])
             sources.append(item)
-    return {
+    payload = {
         "generatedAt": iso_timestamp(int(time.time())),
         "model": OLLAMA_MODEL,
         "reply": reply,
@@ -1298,10 +1678,13 @@ def build_vigi_reply(messages: list[dict], assets: list[dict], cadence: str = "d
             "bulletin": used_bulletin,
             "cadence": cadence if used_bulletin else None,
             "assets": len(safe_assets),
+            "articles": len(used_sources),
         },
         "sources": sources,
         "notice": "Réponse IA locale fondée uniquement sur le bulletin et le parc fournis.",
     }
+    write_vigi_cache(cache_key, payload)
+    return {**payload, "cached": False}
 
 
 def search_articles(query: str, limit: int = 30, days: int = 365, source_id: str = "", sort: str = "recent") -> dict:
@@ -1880,6 +2263,29 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"bulletin error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne du bulletin"})
             return
+        if parsed.path == "/watch-plan/alerts":
+            try:
+                self.send_json(200, build_watch_alerts())
+            except Exception as error:
+                print(f"watch alerts error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne des alertes de veille"})
+            return
+        if parsed.path == "/bulletin/unified":
+            try:
+                parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                cadence = parameters.get("cadence", ["today"])[0]
+                try:
+                    limit = int(parameters.get("limit", ["50"])[0])
+                except ValueError:
+                    raise ValueError("limit doit être un nombre") from None
+                limit = min(120, max(1, limit))
+                self.send_json(200, build_unified_bulletin(cadence, limit))
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except Exception as error:
+                print(f"unified bulletin error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne du bulletin unifié"})
+            return
         if parsed.path == "/ai/news-brief":
             try:
                 parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
@@ -1984,6 +2390,27 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"AI triage error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne du tri IA"})
             return
+        if path in ("/watch-plan/alert", "/watch-plan/alert/action"):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 32_768:
+                    raise ValueError("Corps de requête invalide")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError("Corps de requête invalide")
+                if path == "/watch-plan/alert":
+                    self.send_json(200, {"success": True, "alert": create_watch_alert(payload)})
+                else:
+                    alert = apply_watch_alert_action(
+                        payload.get("id", ""), payload.get("action", ""), payload.get("note", ""),
+                    )
+                    self.send_json(200, {"success": True, "alert": alert})
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json(400, {"error": str(error)})
+            except Exception as error:
+                print(f"watch alert write error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne des alertes de veille"})
+            return
         if path == "/watch-plan":
             try:
                 content_length = int(self.headers.get("Content-Length", "0"))
@@ -1998,7 +2425,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "Route inconnue"})
 
     def do_DELETE(self) -> None:  # noqa: N802
-        if urllib.parse.urlparse(self.path).path != "/vulnerabilities":
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/watch-plan/alert":
+            try:
+                alert_id = urllib.parse.parse_qs(parsed.query).get("id", [""])[0]
+                if not alert_id:
+                    raise ValueError("id est requis")
+                delete_watch_alert(alert_id)
+                self.send_json(200, {"success": True})
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            return
+        if parsed.path != "/vulnerabilities":
             self.send_json(404, {"error": "Route inconnue"})
             return
         try:
