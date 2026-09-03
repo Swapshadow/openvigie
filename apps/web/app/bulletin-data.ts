@@ -189,12 +189,12 @@ export const issues: Record<Cadence, {
     note: 'L’hebdomadaire recoupe les récits, rapproche les signaux techniques et géopolitiques, puis indique ce qui reste inconnu.',
   },
   monthly: {
-    label: 'Août 2026',
-    date: 'N° 01',
-    kicker: 'Le dossier stratégique pour comprendre les transformations durables',
+    label: 'Septembre 2026',
+    date: 'N° 02',
+    kicker: 'Le dossier stratégique · guerre algorithmique, surveillance et souveraineté',
     lead: 'cyberexpression',
     sides: ['apple', 'pegasus'],
     briefs: ['crypto', 'graphene'],
-    note: 'Le mensuel prend du recul : souveraineté, économie politique de la cybersécurité et impacts sur les droits fondamentaux.',
+    note: 'Le mensuel prend du recul : un dossier vidéo, des faits vérifiés et les conséquences durables pour les droits fondamentaux.',
   },
 };

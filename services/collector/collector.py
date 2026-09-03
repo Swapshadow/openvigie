@@ -36,6 +36,12 @@ MAX_FEED_BYTES = 2_000_000
 SAFE_TEXT = re.compile(r"^[\w .+()/,:-]*$", re.UNICODE)
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
 TRACKING_PARAMETERS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
+WATCH_FREQUENCIES = {
+    "Immédiat": 1800,
+    "Quotidien": 86400,
+    "Hebdomadaire": 604800,
+    "Mensuel": 2592000,
+}
 
 FEED_SOURCES = (
     {
@@ -363,6 +369,16 @@ def initialize_database() -> None:
               next_refresh INTEGER NOT NULL DEFAULT 0,
               failures INTEGER NOT NULL DEFAULT 0,
               last_error TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS watch_source_schedules (
+              source_id TEXT PRIMARY KEY,
+              frequency TEXT NOT NULL,
+              refresh_seconds INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
             )
             """
         )
@@ -726,6 +742,21 @@ def refresh_leak_histories() -> int:
 
 def refresh_feed(source: dict) -> int:
     now = int(time.time())
+    # Les sources urgentes (CERT/PSIRT/vulnérabilités) sont relues plus souvent ;
+    # les sources éditoriales conservent un rythme plus modéré.
+    refresh_seconds = int(source.get(
+        "refresh_seconds",
+        1800 if source.get("priority", 0) >= 10 and source.get("default_category") in {
+            "CERT-FR · Alertes", "CERT-FR · Avis", "Vulnérabilités & correctifs",
+        } else FEED_REFRESH_SECONDS,
+    ))
+    with database_lock, connect() as connection:
+        schedule = connection.execute(
+            "SELECT refresh_seconds FROM watch_source_schedules WHERE source_id = ?",
+            (source["id"],),
+        ).fetchone()
+    if schedule:
+        refresh_seconds = int(schedule["refresh_seconds"])
     with database_lock, connect() as connection:
         row = connection.execute("SELECT * FROM feed_runs WHERE source_id = ?", (source["id"],)).fetchone()
         connection.execute("UPDATE feed_runs SET last_attempt=? WHERE source_id=?", (now, source["id"]))
@@ -759,7 +790,7 @@ def refresh_feed(source: dict) -> int:
                 UPDATE feed_runs SET etag=?, last_modified=?, last_success=?, next_refresh=?,
                   failures=0, last_error=NULL WHERE source_id=?
                 """,
-                (etag, last_modified, now, now + FEED_REFRESH_SECONDS, source["id"]),
+                (etag, last_modified, now, now + refresh_seconds, source["id"]),
             )
         return len(articles)
     except urllib.error.HTTPError as error:
@@ -767,7 +798,7 @@ def refresh_feed(source: dict) -> int:
             with database_lock, connect() as connection:
                 connection.execute(
                     "UPDATE feed_runs SET last_success=?, next_refresh=?, failures=0, last_error=NULL WHERE source_id=?",
-                    (now, now + FEED_REFRESH_SECONDS, source["id"]),
+                    (now, now + refresh_seconds, source["id"]),
                 )
             return 0
         raise
@@ -811,7 +842,15 @@ def iso_timestamp(timestamp: int | None) -> str | None:
 
 def feed_statuses() -> list[dict]:
     with database_lock, connect() as connection:
-        rows = connection.execute("SELECT * FROM feed_runs ORDER BY source_name").fetchall()
+        rows = connection.execute(
+            """
+            SELECT feed_runs.*, watch_source_schedules.frequency AS watch_frequency,
+                   watch_source_schedules.refresh_seconds AS watch_refresh_seconds
+            FROM feed_runs
+            LEFT JOIN watch_source_schedules USING(source_id)
+            ORDER BY source_name
+            """
+        ).fetchall()
     statuses = []
     for row in rows:
         if not row["last_attempt"]:
@@ -829,8 +868,43 @@ def feed_statuses() -> list[dict]:
             "lastSuccess": iso_timestamp(row["last_success"]),
             "nextRefresh": iso_timestamp(row["next_refresh"]),
             "error": row["last_error"] if status == "degraded" else None,
+            "watchFrequency": row["watch_frequency"],
+            "watchRefreshSeconds": row["watch_refresh_seconds"],
         })
     return statuses
+
+
+def update_watch_source_schedules(items: object) -> list[dict]:
+    if not isinstance(items, list) or len(items) > 50:
+        raise ValueError("Le planning de collecte doit contenir au maximum 50 sources")
+    normalized: dict[str, str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("Ligne de planning invalide")
+        source_id = str(item.get("sourceId", "")).strip()
+        frequency = str(item.get("frequency", "")).strip()
+        if source_id not in SOURCE_BY_ID or frequency not in WATCH_FREQUENCIES:
+            raise ValueError("Source ou fréquence de collecte invalide")
+        previous = normalized.get(source_id)
+        if previous is None or WATCH_FREQUENCIES[frequency] < WATCH_FREQUENCIES[previous]:
+            normalized[source_id] = frequency
+    now = int(time.time())
+    with database_lock, connect() as connection:
+        connection.execute("DELETE FROM watch_source_schedules")
+        for source_id, frequency in normalized.items():
+            refresh_seconds = WATCH_FREQUENCIES[frequency]
+            connection.execute(
+                "INSERT INTO watch_source_schedules(source_id, frequency, refresh_seconds, updated_at) VALUES(?, ?, ?, ?)",
+                (source_id, frequency, refresh_seconds, now),
+            )
+            connection.execute(
+                "UPDATE feed_runs SET next_refresh = MIN(next_refresh, ?) WHERE source_id = ?",
+                (now + refresh_seconds, source_id),
+            )
+    return [
+        {"sourceId": source_id, "frequency": frequency, "refreshSeconds": WATCH_FREQUENCIES[frequency]}
+        for source_id, frequency in sorted(normalized.items())
+    ]
 
 
 def bulletin_window(cadence: str) -> tuple[int, str]:
@@ -1755,7 +1829,7 @@ def feed_scheduler() -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OpenVigieCollector/0.4"
+    server_version = "OpenVigieCollector/0.5"
 
     def send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
@@ -1921,6 +1995,20 @@ class Handler(BaseHTTPRequestHandler):
             delete_query(key)
             self.send_json(200, {"success": True})
         except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+
+    def do_POST(self) -> None:  # noqa: N802
+        if urllib.parse.urlparse(self.path).path != "/watch-plan":
+            self.send_json(404, {"error": "Route inconnue"})
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            if content_length <= 0 or content_length > 16_384:
+                raise ValueError("Corps de requête invalide")
+            payload = json.loads(self.rfile.read(content_length))
+            schedules = update_watch_source_schedules(payload.get("sources") if isinstance(payload, dict) else None)
+            self.send_json(200, {"success": True, "sources": schedules, "updatedAt": iso_timestamp(int(time.time()))})
+        except (ValueError, json.JSONDecodeError) as error:
             self.send_json(400, {"error": str(error)})
 
     def log_message(self, message: str, *args: object) -> None:

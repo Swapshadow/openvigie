@@ -41,6 +41,7 @@ export default function InventoryWorkspace() {
   const [dossierTab, setDossierTab] = useState<DossierTab>('summary');
   const [severity, setSeverity] = useState<SeverityFilter>('ALL');
   const [search, setSearch] = useState('');
+  const [deepPatchOpen, setDeepPatchOpen] = useState(false);
   const requestSequence = useRef(0);
 
   const selectedVendor = findVendor(vendorId);
@@ -266,6 +267,7 @@ export default function InventoryWorkspace() {
                   setSelectedAssetId(asset.id);
                   setData(null);
                   setSelectedCveId('');
+                  setDeepPatchOpen(false);
                 }}>
                   <span className="asset-monogram" aria-hidden="true">{vendor.short}</span>
                   <span className="asset-copy"><strong>{asset.label}</strong><small>{product.name} · {asset.version || 'SaaS'}</small></span>
@@ -286,6 +288,7 @@ export default function InventoryWorkspace() {
                 <div className="monitor-actions">
                   <a href={assetProduct.advisoryUrl} target="_blank" rel="noreferrer">Avis éditeur ↗</a>
                   <button type="button" onClick={() => void refresh(true)} disabled={loading}>{loading ? 'Synchronisation…' : 'Actualiser'}</button>
+                  <button type="button" className="deep-patch-trigger" onClick={() => setDeepPatchOpen((open) => !open)} disabled={!selectedCve}>{deepPatchOpen ? 'Fermer le patch' : 'Patch en profondeur'}</button>
                   <button type="button" className="danger-action" onClick={() => removeAsset(selectedAsset)}>Retirer</button>
                 </div>
               </header>
@@ -320,6 +323,8 @@ export default function InventoryWorkspace() {
               ) : data && !loading ? (
                 <div className="asset-alerts-empty"><strong>Aucune alerte éditoriale corrélée</strong><span>La surveillance quotidienne reste active pour cette marque, ce produit et cette version.</span></div>
               ) : null}
+
+              {deepPatchOpen && selectedCve ? <DeepPatchPanel cve={selectedCve} asset={selectedAsset} productName={assetProduct.name} advisoryUrl={assetProduct.advisoryUrl} /> : null}
 
               <div className="vulnerability-tools">
                 <label><span className="sr-only">Rechercher une CVE</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher CVE ou mot-clé…" /></label>
@@ -418,4 +423,13 @@ function CveDossier({ cve, productName, advisoryUrl, tab, onTab }: { cve: Vulner
       )}
     </>
   );
+}
+
+function DeepPatchPanel({ cve, asset, productName, advisoryUrl }: { cve: Vulnerability; asset: InventoryAsset; productName: string; advisoryUrl: string }) {
+  const fixRef = cve.references.find((reference) => reference.tags.some((tag) => ['Patch', 'Vendor Advisory', 'Mitigation'].includes(tag)));
+  return <section className="deep-patch-panel" aria-labelledby="deep-patch-title">
+    <header><div><span>REMÉDIATION GUIDÉE · {asset.label}</span><h3 id="deep-patch-title">Patch en profondeur</h3><p>{cve.id} · {productName} · version installée {asset.version || 'non précisée'}</p></div><strong data-severity={cve.severity}>{cve.severity} · {cve.score ?? '—'}</strong></header>
+    <div className="deep-patch-grid"><article><b>01 · Confirmer</b><h4>Vérifier l’exposition</h4><p>Comparez la version installée, le rôle de l’équipement et son exposition avec l’avis éditeur. Une correspondance CPE ne remplace pas cette vérification.</p></article><article><b>02 · Choisir</b><h4>Version corrigée ou contournement</h4><p>{cve.kev ? `La CISA demande : ${cve.kev.requiredAction}` : 'Utilisez la version corrigée publiée par l’éditeur ou son contournement officiellement documenté.'}</p></article><article><b>03 · Préparer</b><h4>Réduire le risque pendant l’intervention</h4><p>Préparez une sauvegarde, une fenêtre de maintenance, un accès de secours et la rotation des secrets si l’avis le recommande.</p></article><article><b>04 · Valider</b><h4>Contrôler après mise à jour</h4><p>Vérifiez la version, les journaux, les services exposés et l’absence d’indicateur de compromission. Documentez la preuve de clôture.</p></article></div>
+    <footer><span>Lecture défensive : {cve.attackVector ?? 'vecteur non renseigné'} · privilèges {cve.privilegesRequired ?? 'non renseignés'} · interaction {cve.userInteraction ?? 'non renseignée'}</span><div><a href={advisoryUrl} target="_blank" rel="noreferrer">Avis éditeur ↗</a>{fixRef ? <a href={fixRef.url} target="_blank" rel="noreferrer">Référence corrective ↗</a> : null}<a href={`https://nvd.nist.gov/vuln/detail/${cve.id}`} target="_blank" rel="noreferrer">Fiche NVD ↗</a></div></footer>
+  </section>;
 }
