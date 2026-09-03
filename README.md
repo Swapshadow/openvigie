@@ -145,6 +145,33 @@ docker compose up --build
 Then open `http://localhost:3000`. Stop the application with `Ctrl+C`, or run
 `docker compose down` from another terminal.
 
+### Local AI with Ollama
+
+The Docker stack includes Ollama and Qwen2.5 7B Instruct. No host installation
+is required on Windows, Linux, or macOS. Start the complete stack normally:
+
+```bash
+docker compose up -d --build
+```
+
+The `ollama-model` initialization container downloads the model on first start;
+subsequent starts reuse the `openvigie_ollama` Docker volume. Ollama is exposed
+only on the host loopback interface at `http://localhost:11434` and is available
+to the collector at `http://ollama:11434`. To select another model or host port,
+set `OLLAMA_MODEL` or `OLLAMA_PORT` in `.env`.
+
+Qwen2.5 7B needs at least 6 GB of memory assigned to Docker Desktop (8 GB is
+recommended). OpenVigie defaults to a 2048-token context and one parallel
+inference to keep resource usage predictable on personal computers.
+
+Ollama does not browse the web by itself. OpenVigie's collector remains
+responsible for retrieving attributed RSS/Atom news and primary security
+sources. Qwen is the local analysis layer that can classify, rank, correlate,
+and summarize those collected items without sending them to a cloud AI service.
+The local news-analysis endpoint is available at
+`/api/ai/news-brief?cadence=daily`; an optional `topic` parameter focuses the
+brief while preserving the original source names and URLs.
+
 The Docker image copies the application into the container instead of mounting
 the macOS project directory. This avoids intermittent file-sharing `EIO` errors
 on Docker Desktop.

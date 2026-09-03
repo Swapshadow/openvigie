@@ -1,6 +1,33 @@
 name: openvigie
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-2048}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - openvigie_ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  ollama-model:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull"]
+    command: ["${OLLAMA_MODEL:-qwen2.5:7b-instruct}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: on-failure
+
   collector:
     build:
       context: ./services/collector
@@ -11,6 +38,8 @@ services:
       OPENVIGIE_DB_PATH: /data/openvigie.db
       OPENVIGIE_REFRESH_SECONDS: ${OPENVIGIE_REFRESH_SECONDS:-86400}
       OPENVIGIE_FEED_REFRESH_SECONDS: ${OPENVIGIE_FEED_REFRESH_SECONDS:-10800}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
     volumes:
       - openvigie_data:/data
     healthcheck:
@@ -38,3 +67,4 @@ services:
 
 volumes:
   openvigie_data:
+  openvigie_ollama:

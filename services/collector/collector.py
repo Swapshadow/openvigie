@@ -1964,27 +1964,38 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"Vigi chat error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne de Vigi"})
             return
-        if path != "/ai/triage":
-            self.send_json(404, {"error": "Route inconnue"})
+        if path == "/ai/triage":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 200_000:
+                    raise ValueError("Corps de requête trop volumineux")
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                cadence = str(payload.get("cadence", "daily"))
+                limit = min(30, max(3, int(payload.get("limit", 12))))
+                assets = payload.get("assets", [])
+                if not isinstance(assets, list):
+                    raise ValueError("assets doit être une liste")
+                self.send_json(200, build_ai_triage(cadence, limit, assets))
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json(400, {"error": str(error)})
+            except RuntimeError as error:
+                self.send_json(503, {"error": str(error)})
+            except Exception as error:
+                print(f"AI triage error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne du tri IA"})
             return
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length < 0 or length > 200_000:
-                raise ValueError("Corps de requête trop volumineux")
-            payload = json.loads(self.rfile.read(length) or b"{}")
-            cadence = str(payload.get("cadence", "daily"))
-            limit = min(30, max(3, int(payload.get("limit", 12))))
-            assets = payload.get("assets", [])
-            if not isinstance(assets, list):
-                raise ValueError("assets doit être une liste")
-            self.send_json(200, build_ai_triage(cadence, limit, assets))
-        except (ValueError, json.JSONDecodeError) as error:
-            self.send_json(400, {"error": str(error)})
-        except RuntimeError as error:
-            self.send_json(503, {"error": str(error)})
-        except Exception as error:
-            print(f"AI triage error: {error}", flush=True)
-            self.send_json(500, {"error": "Erreur interne du tri IA"})
+        if path == "/watch-plan":
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length <= 0 or content_length > 16_384:
+                    raise ValueError("Corps de requête invalide")
+                payload = json.loads(self.rfile.read(content_length))
+                schedules = update_watch_source_schedules(payload.get("sources") if isinstance(payload, dict) else None)
+                self.send_json(200, {"success": True, "sources": schedules, "updatedAt": iso_timestamp(int(time.time()))})
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json(400, {"error": str(error)})
+            return
+        self.send_json(404, {"error": "Route inconnue"})
 
     def do_DELETE(self) -> None:  # noqa: N802
         if urllib.parse.urlparse(self.path).path != "/vulnerabilities":
@@ -1995,20 +2006,6 @@ class Handler(BaseHTTPRequestHandler):
             delete_query(key)
             self.send_json(200, {"success": True})
         except ValueError as error:
-            self.send_json(400, {"error": str(error)})
-
-    def do_POST(self) -> None:  # noqa: N802
-        if urllib.parse.urlparse(self.path).path != "/watch-plan":
-            self.send_json(404, {"error": "Route inconnue"})
-            return
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-            if content_length <= 0 or content_length > 16_384:
-                raise ValueError("Corps de requête invalide")
-            payload = json.loads(self.rfile.read(content_length))
-            schedules = update_watch_source_schedules(payload.get("sources") if isinstance(payload, dict) else None)
-            self.send_json(200, {"success": True, "sources": schedules, "updatedAt": iso_timestamp(int(time.time()))})
-        except (ValueError, json.JSONDecodeError) as error:
             self.send_json(400, {"error": str(error)})
 
     def log_message(self, message: str, *args: object) -> None:
