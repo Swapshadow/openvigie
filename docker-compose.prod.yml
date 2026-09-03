@@ -1,0 +1,77 @@
+version: '3.9'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_CONTEXT_LENGTH: 2048
+      OLLAMA_NUM_PARALLEL: 1
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - openvigie_ollama:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ollama-model:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull"]
+    command: ["${OLLAMA_MODEL:-qwen2.5:3b-instruct}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: on-failure
+
+  collector:
+    build:
+      context: ./services/collector
+      dockerfile: Dockerfile
+    environment:
+      OPENVIGIE_DB_PATH: /data/openvigie.db
+      OPENVIGIE_COLLECTOR_URL: http://web:3000
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b-instruct}
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - openvigie_data:/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.prod
+    environment:
+      NODE_ENV: production
+      OPENVIGIE_COLLECTOR_URL: http://collector:8787
+    ports:
+      - "0.0.0.0:3000:3000"
+    depends_on:
+      collector:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  openvigie_data:
+    driver: local
+  openvigie_ollama:
+    driver: local
