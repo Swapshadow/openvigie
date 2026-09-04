@@ -391,6 +391,9 @@ def initialize_database() -> None:
             )
             """
         )
+        article_columns = {row["name"] for row in connection.execute("PRAGMA table_info(articles)")}
+        if "image_url" not in article_columns:
+            connection.execute("ALTER TABLE articles ADD COLUMN image_url TEXT")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS feed_runs (
@@ -647,6 +650,47 @@ def parse_published_at(value: str, fallback: int) -> int:
     return fallback if timestamp < 0 or timestamp > fallback + 7 * 86400 else timestamp
 
 
+IMAGE_EXTENSION = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)(?:[?#]|$)", re.IGNORECASE)
+IMG_TAG_SRC = re.compile(r"<img\b[^>]*?\bsrc=[\"']([^\"'>\s]+)[\"']", re.IGNORECASE)
+IMAGE_HOST_DENY = ("feedburner", "feeds.", "/pixel", "1x1", "spacer", "doubleclick")
+
+
+def extract_image(entry: ET.Element, base_url: str) -> str:
+    """Best-effort cover image for an RSS/Atom entry, always an absolute URL."""
+    candidate = ""
+    for child in entry.iter():
+        name = element_name(child)
+        if name not in {"enclosure", "content", "thumbnail", "image"}:
+            continue
+        url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()
+        if not url:
+            continue
+        content_type = child.attrib.get("type", "").lower()
+        medium = child.attrib.get("medium", "").lower()
+        if name == "enclosure" and not content_type.startswith("image/"):
+            continue
+        if name == "content" and not (
+            content_type.startswith("image/") or medium == "image" or IMAGE_EXTENSION.search(url)
+        ):
+            continue
+        candidate = url
+        if name in {"thumbnail", "enclosure"}:
+            break
+    if not candidate:
+        blob = element_text(entry, ("encoded", "description", "summary", "content"))
+        match = IMG_TAG_SRC.search(blob or "")
+        if match:
+            candidate = html.unescape(match.group(1)).strip()
+    if not candidate:
+        return ""
+    canonical = canonicalize_url(candidate, base_url)
+    if not canonical or not canonical.startswith(("http://", "https://")):
+        return ""
+    if any(token in canonical.lower() for token in IMAGE_HOST_DENY):
+        return ""
+    return canonical[:500]
+
+
 def parse_feed(data: bytes, source: dict, fetched_at: int) -> list[dict]:
     upper_prefix = data[:4096].upper()
     root_match = re.search(br"<(?:[A-Z0-9_-]+:)?(?:RSS|FEED|RDF)\b", upper_prefix)
@@ -696,6 +740,7 @@ def parse_feed(data: bytes, source: dict, fetched_at: int) -> list[dict]:
             "fetched_at": fetched_at,
             "category": category,
             "cves_json": json.dumps(cves, ensure_ascii=False, separators=(",", ":")),
+            "image_url": extract_image(entry, source["feed_url"]),
         })
     return articles
 
@@ -708,10 +753,10 @@ def store_articles(articles: list[dict]) -> None:
             """
             INSERT INTO articles(
               id, source_id, source_name, source_home, source_kind, license_note,
-              title, url, summary, author, published_at, fetched_at, category, cves_json
+              title, url, summary, author, published_at, fetched_at, category, cves_json, image_url
             ) VALUES(
               :id, :source_id, :source_name, :source_home, :source_kind, :license_note,
-              :title, :url, :summary, :author, :published_at, :fetched_at, :category, :cves_json
+              :title, :url, :summary, :author, :published_at, :fetched_at, :category, :cves_json, :image_url
             )
             ON CONFLICT(id) DO UPDATE SET
               source_id=excluded.source_id,
@@ -725,7 +770,8 @@ def store_articles(articles: list[dict]) -> None:
               published_at=excluded.published_at,
               fetched_at=excluded.fetched_at,
               category=excluded.category,
-              cves_json=excluded.cves_json
+              cves_json=excluded.cves_json,
+              image_url=COALESCE(NULLIF(excluded.image_url, ''), articles.image_url)
             """,
             articles,
         )
@@ -740,10 +786,10 @@ def store_history_articles(articles: list[dict]) -> None:
             """
             INSERT OR IGNORE INTO articles(
               id, source_id, source_name, source_home, source_kind, license_note,
-              title, url, summary, author, published_at, fetched_at, category, cves_json
+              title, url, summary, author, published_at, fetched_at, category, cves_json, image_url
             ) VALUES(
               :id, :source_id, :source_name, :source_home, :source_kind, :license_note,
-              :title, :url, :summary, :author, :published_at, :fetched_at, :category, :cves_json
+              :title, :url, :summary, :author, :published_at, :fetched_at, :category, :cves_json, :image_url
             )
             """,
             articles,
@@ -757,7 +803,7 @@ def history_article(source: dict, title: str, url: str, summary: str, published_
         "source_kind": source["kind"], "license_note": source["license"],
         "title": clean_excerpt(title, 240), "url": url, "summary": clean_excerpt(summary, 360),
         "author": "", "published_at": published_at, "fetched_at": fetched_at,
-        "category": "Fuites de données · France", "cves_json": "[]",
+        "category": "Fuites de données · France", "cves_json": "[]", "image_url": "",
     }
 
 
@@ -1049,6 +1095,7 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
         selected.extend(remaining[: limit - len(selected)])
 
     articles = []
+    row_keys = set(rows[0].keys()) if rows else set()
     for score, row in selected:
         articles.append({
             "id": row["id"],
@@ -1060,6 +1107,7 @@ def build_bulletin(cadence: str, limit: int, category: str = "") -> dict:
             "fetchedAt": iso_timestamp(row["fetched_at"]),
             "category": row["category"],
             "cves": json.loads(row["cves_json"] or "[]"),
+            "imageUrl": (row["image_url"] or None) if "image_url" in row_keys else None,
             "score": round(score, 1),
             "source": {
                 "id": row["source_id"],

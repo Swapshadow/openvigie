@@ -42,6 +42,17 @@ function formatDate(value: string | null, includeTime = false) {
   }).format(date);
 }
 
+function ArticleThumb({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <figure className="unified-media">
+      {/* Feed-provided cover; hidden on load failure so the card stays clean. */}
+      <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+    </figure>
+  );
+}
+
 export default function BulletinUnified() {
   const [cadence, setCadence] = useState<UnifiedCadence>('today');
   const [category, setCategory] = useState(ALL_CATEGORIES);
@@ -195,7 +206,8 @@ export default function BulletinUnified() {
       ) : (
         <ol className="unified-feed">
           {visible.map((article) => (
-            <li key={article.id} className="unified-item glass-panel">
+            <li key={article.id} className={`unified-item glass-panel${article.imageUrl ? ' has-media' : ''}`}>
+              {article.imageUrl ? <ArticleThumb src={article.imageUrl} alt="" /> : null}
               <div className="unified-item-head">
                 <span className="unified-cat">{article.category}</span>
                 <strong className="unified-source">{article.source.name}</strong>

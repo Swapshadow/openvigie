@@ -10,6 +10,7 @@ export type LiveArticle = {
   fetchedAt: string | null;
   category: string;
   cves: string[];
+  imageUrl?: string | null;
   score: number;
   source: {
     id: string;
