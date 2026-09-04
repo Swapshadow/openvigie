@@ -29,36 +29,37 @@ detection templates, and remediation guidance.
 
 ## The OpenVigie Bulletin
 
-The web application includes three editorial rhythms:
+The **Bulletin unifié** displays a curated feed of cybersecurity news and
+vulnerabilities, refreshed every three hours from 44+ specialist RSS/Atom sources.
 
-- a **daily** front page for new facts and immediate operational consequences;
-- a **weekly** synthesis connecting technical and geopolitical signals;
-- a **monthly** strategic dossier covering sovereignty, surveillance, platform
-  power, cyber conflict, and crypto-enabled crime.
+### Features
 
-Each edition opens as a newspaper: the front page is limited to five priority
-announcements, while every detected topic has its own page with previous/next
-page controls. Opening the application now lands directly on the bulletin; the
-asset inventory remains available from the main navigation.
+- **Article images** — cover images are extracted from feed enclosures, Media RSS
+  metadata, or article HTML and displayed as lazy-loaded thumbnails in the feed.
+- **Vigi — local AI assistant** — a chatbot powered by Qwen2.5 3B (100% local,
+  runs in Docker) that answers questions about the bulletin and your asset
+  inventory. Vigi correlates CVEs, exploitation status, and remediation guidance
+  without sending data to external AI services.
+- **Weekly report** (`/rapport-hebdo`) — synthesizes the past 7 days with:
+  - Top CVE ranked by CISA KEV status and mention count;
+  - Top news stories by relevance;
+  - Trending keywords extracted from article titles and summaries;
+  - Category breakdown (vulnerabilities, data breaches, threat campaigns, etc.);
+  - One-click export to **PDF** and **HTML** for archival or sharing.
 
-Two operational desks make the bulletin easier to use during infrastructure
-watch: **Software supply chain** covers malicious packages, dependency risks,
-SBOM, build provenance, and artifact signing; **VPN & remote access** covers
-edge appliances, SSL-VPN/IPsec gateways, remote clients, and actively exploited
-perimeter vulnerabilities.
+Two operational desks support infrastructure watch: **Software supply chain**
+covers malicious packages, dependency risks, SBOM, build provenance, and
+artifact signing; **VPN & remote access** covers edge appliances, SSL-VPN/IPsec
+gateways, remote clients, and actively exploited perimeter vulnerabilities.
 
-The first section of each edition is generated from a whitelist of official and
-specialist RSS/Atom feeds. The Docker collector refreshes the feeds every three
-hours, stores article metadata in SQLite, removes tracking parameters, detects
-CVE identifiers, classifies themes, and keeps source diversity in the automatic
-ranking. It runs even when the browser is closed.
+The collector refreshes feeds every three hours, stores article metadata in
+SQLite, removes tracking parameters, detects CVE identifiers, classifies themes,
+and keeps source diversity in automatic ranking. It runs continuously even when
+the browser is closed.
 
 OpenVigie stores only the title, author when supplied by the feed, a short
-plain-text excerpt, dates, attribution, and the original link. It does not copy
-article bodies or images and does not use generative AI to rewrite source
-claims. The daily, weekly, and monthly views use rolling 48-hour, 8-day, and
-35-day windows. The static long-form dossiers separately demonstrate how to
-distinguish verified facts, contested information, and analysis. See
+plain-text excerpt, dates, attribution, the original link, and a cover image URL
+(when available). It does not copy article bodies or rewrite source claims. See
 [EDITORIAL_POLICY.md](EDITORIAL_POLICY.md).
 
 ## Functional asset monitoring
@@ -100,6 +101,9 @@ OpenVigie works with the public NVD rate limit. For larger inventories, copy
   watchTowr Labs, and PortSwigger Research;
 - BleepingComputer, The Record, Krebs on Security, and Schneier on Security;
 - ZATAZ cybersecurity news;
+- **Anthropic Security** — AI safety and security research;
+- **OpenAI Atlas** — AI editor updates and agent/model announcements;
+- **Google Project Zero** — vulnerability research and disclosure;
 - Freedom of the Press Foundation, Electronic Frontier Foundation, Access Now,
   Citizen Lab, Amnesty Security Lab, and Forbidden Stories;
 - Microsoft Security Response Center, Google Security Blog, Mozilla Security,
@@ -145,9 +149,9 @@ docker compose up --build
 Then open `http://localhost:3000`. Stop the application with `Ctrl+C`, or run
 `docker compose down` from another terminal.
 
-### Local AI with Ollama
+### Local AI with Vigi (Ollama)
 
-The Docker stack includes Ollama and Qwen2.5 7B Instruct. No host installation
+The Docker stack includes Ollama and Qwen2.5 3B Instruct. No host installation
 is required on Windows, Linux, or macOS. Start the complete stack normally:
 
 ```bash
@@ -157,20 +161,22 @@ docker compose up -d --build
 The `ollama-model` initialization container downloads the model on first start;
 subsequent starts reuse the `openvigie_ollama` Docker volume. Ollama is exposed
 only on the host loopback interface at `http://localhost:11434` and is available
-to the collector at `http://ollama:11434`. To select another model or host port,
+to the web app at `http://ollama:11434`. To select another model or host port,
 set `OLLAMA_MODEL` or `OLLAMA_PORT` in `.env`.
 
-Qwen2.5 7B needs at least 6 GB of memory assigned to Docker Desktop (8 GB is
-recommended). OpenVigie defaults to a 2048-token context and one parallel
-inference to keep resource usage predictable on personal computers.
+**Memory requirements:** Qwen2.5 3B needs at least 4 GB of memory, with 6–8 GB
+recommended for responsive performance on personal computers. OpenVigie defaults
+to a 2048-token context and one parallel inference to keep resource usage
+predictable.
 
-Ollama does not browse the web by itself. OpenVigie's collector remains
-responsible for retrieving attributed RSS/Atom news and primary security
-sources. Qwen is the local analysis layer that can classify, rank, correlate,
-and summarize those collected items without sending them to a cloud AI service.
-The local news-analysis endpoint is available at
-`/api/ai/news-brief?cadence=daily`; an optional `topic` parameter focuses the
-brief while preserving the original source names and URLs.
+**How Vigi works:** Ollama does not browse the web. The OpenVigie collector
+fetches attributed RSS/Atom news and primary security sources, then Vigi
+(Qwen2.5 3B) analyzes and answers questions about those items locally, without
+sending data to cloud AI services. Vigi can cross-reference the bulletin with
+your declared asset inventory to identify relevant vulnerabilities.
+
+The local chat endpoint is available at `/api/ai/chat`; Vigi is also accessible
+as a floating chatbot in the web UI.
 
 The Docker image copies the application into the container instead of mounting
 the macOS project directory. This avoids intermittent file-sharing `EIO` errors
