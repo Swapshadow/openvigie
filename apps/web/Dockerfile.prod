@@ -4,8 +4,12 @@ WORKDIR /app
 
 # Install dependencies
 RUN apk add --no-cache python3 make g++
-COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm install -g pnpm@11.19.0 \
+ && pnpm config set fetch-timeout 900000 \
+ && pnpm config set fetch-retries 8 \
+ && pnpm config set fetch-retry-maxtimeout 180000 \
+ && pnpm install --frozen-lockfile
 
 # Build app
 COPY . .

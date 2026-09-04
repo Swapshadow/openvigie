@@ -114,8 +114,12 @@ export default function WatchAlerts() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    // Defer past the synchronous effect body so the first setState isn't a cascading render.
+    const timer = window.setTimeout(() => void load(controller.signal), 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [load]);
 
   const createAlert = async () => {

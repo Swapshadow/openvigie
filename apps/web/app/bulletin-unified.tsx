@@ -87,22 +87,22 @@ export default function BulletinUnified() {
   const loadedFacets = useMemo(() => data?.selectedCategories ?? [], [data]);
   const articles = useMemo(() => data?.articles ?? [], [data]);
 
+  // Derive the effective filter instead of storing an invalid one: a stale category
+  // (e.g. after switching cadence) simply falls back to "all" during render.
+  const activeCategory = category !== ALL_CATEGORIES && loadedFacets.some((facet) => facet.name === category)
+    ? category
+    : ALL_CATEGORIES;
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return articles.filter((article) => {
-      if (category !== ALL_CATEGORIES && article.category !== category) return false;
+      if (activeCategory !== ALL_CATEGORIES && article.category !== activeCategory) return false;
       if (!needle) return true;
       return `${article.title} ${article.excerpt} ${article.source.name} ${article.cves.join(' ')}`
         .toLowerCase()
         .includes(needle);
     });
-  }, [articles, category, query]);
-
-  useEffect(() => {
-    if (category !== ALL_CATEGORIES && !loadedFacets.some((facet) => facet.name === category)) {
-      setCategory(ALL_CATEGORIES);
-    }
-  }, [category, loadedFacets]);
+  }, [articles, activeCategory, query]);
 
   const onlineSources = data?.sources.filter((source) => source.status === 'online').length ?? 0;
   const totalSources = data?.sources.length ?? 0;
@@ -154,7 +154,7 @@ export default function BulletinUnified() {
       <nav className="unified-filters" aria-label="Filtrer par catégorie">
         <button
           type="button"
-          aria-pressed={category === ALL_CATEGORIES}
+          aria-pressed={activeCategory === ALL_CATEGORIES}
           onClick={() => setCategory(ALL_CATEGORIES)}
         >
           Tout <i>{articles.length}</i>
@@ -163,7 +163,7 @@ export default function BulletinUnified() {
           <button
             type="button"
             key={facet.name}
-            aria-pressed={category === facet.name}
+            aria-pressed={activeCategory === facet.name}
             onClick={() => setCategory(facet.name)}
           >
             {facet.name} <i>{facet.count}</i>
