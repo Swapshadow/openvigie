@@ -1,40 +1,34 @@
-# Build stage
-FROM node:20-alpine AS builder
-WORKDIR /app
+# Production image for the OpenVigie web app (vinext / Vite / Cloudflare stack).
+# Mirrors the proven ./Dockerfile and adds prod hardening: NODE_ENV, dumb-init,
+# a non-root user and a health check.
+FROM node:22.23.2-bookworm-slim
 
-# Install dependencies
-RUN apk add --no-cache python3 make g++
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ dumb-init curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && npm install --global pnpm@11.19.0
+
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN npm install -g pnpm@11.19.0 \
- && pnpm config set fetch-timeout 900000 \
+RUN pnpm config set fetch-timeout 900000 \
  && pnpm config set fetch-retries 8 \
  && pnpm config set fetch-retry-maxtimeout 180000 \
  && pnpm install --frozen-lockfile
 
-# Build app
 COPY . .
 RUN pnpm build
 
-# Runtime stage - minimal image
-FROM node:20-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-
-# Install only production deps + dumb-init for signal handling
-RUN apk add --no-cache dumb-init
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY package.json ./
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-# Security: run as non-root
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+RUN groupadd --system --gid 1001 nodejs \
+ && useradd --system --uid 1001 --gid nodejs --home /app nextjs \
+ && chown -R nextjs:nodejs /app
 USER nextjs
 
 EXPOSE 3000
-ENTRYPOINT ["/sbin/dumb-init", "--"]
-CMD ["node_modules/.bin/next", "start", "--hostname", "0.0.0.0"]
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
+  CMD curl -fsS http://localhost:3000/ || exit 1
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["pnpm", "start", "--", "--host", "0.0.0.0"]
