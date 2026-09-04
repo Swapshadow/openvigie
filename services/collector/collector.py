@@ -1386,6 +1386,131 @@ def build_unified_bulletin(cadence: str, limit: int) -> dict:
     }
 
 
+WEEKLY_STOPWORDS = frozenset(
+    """
+    le la les un une des du de au aux et ou ni mais donc or car à a dans par pour sur sous
+    avec sans que qui quoi dont ou est sont été être fait font plus moins tres très cette ces
+    son sa ses leur leurs nos vos mon ton notre votre entre vers chez apres après avant
+    cet ainsi aussi lors dès été était sera plusieurs certains toute tous toutes
+    the a an and or of to in for on with without that which who what from as is are be been
+    being this these those it its their they has have had will would can could may might
+    new now after over under into out about more most less than then them our your his her
+    see was were use used using also may can could would should must not only when where how
+    https http www com org html rss xml feed amp nbsp via
+    cyber security securite sécurité data information report reports update updates advisory
+    advisories patch patched release released version versions issue issues flaw flaws
+    vulnerability vulnerabilities vulnerabilite vulnerabilites cve attack attacks affected
+    allow allows remote code execution disclosed disclosure addresses multiple
+    please note following details link links page assigned ingests updated
+    janvier fevrier février mars avril mai juin juillet aout août septembre octobre
+    novembre decembre décembre january february march april june july august september
+    october november december
+    """.split()
+)
+WEEKLY_TOKEN = re.compile(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9.+/-]{2,}")
+WEEKLY_URL = re.compile(r"https?://\S+|www\.\S+")
+
+
+def build_weekly_report(limit: int = 40) -> dict:
+    """Editorial digest of the last 7 days: top CVE, top news, trending terms."""
+    window_seconds = 7 * 86400
+    now = int(time.time())
+    cutoff = now - window_seconds
+    try:
+        kev = get_kev()
+    except Exception as error:  # noqa: BLE001 - KEV is best-effort enrichment
+        print(f"weekly report KEV unavailable: {error}", flush=True)
+        kev = {}
+
+    with database_lock, connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM articles WHERE published_at >= ? ORDER BY published_at DESC",
+            (cutoff,),
+        ).fetchall()
+
+    cve_hits: dict[str, dict] = {}
+    for row in rows:
+        for cve in json.loads(row["cves_json"] or "[]"):
+            slot = cve_hits.get(cve)
+            if slot is None:
+                kev_entry = kev.get(cve) or {}
+                slot = cve_hits[cve] = {
+                    "cve": cve,
+                    "mentions": 0,
+                    "kev": cve in kev,
+                    "kevRansomware": str(kev_entry.get("knownRansomwareCampaignUse", "")).lower() == "known",
+                    "kevDateAdded": kev_entry.get("dateAdded") or None,
+                    "vendor": kev_entry.get("vendorProject") or None,
+                    "product": kev_entry.get("product") or None,
+                    "articles": [],
+                }
+            slot["mentions"] += 1
+            if len(slot["articles"]) < 5:
+                slot["articles"].append({
+                    "title": row["title"],
+                    "url": row["url"],
+                    "source": row["source_name"],
+                    "publishedAt": iso_timestamp(row["published_at"]),
+                })
+    top_cve = sorted(
+        cve_hits.values(),
+        key=lambda item: (item["kev"], item["kevRansomware"], item["mentions"], item["cve"]),
+        reverse=True,
+    )[:12]
+
+    term_counts: dict[str, int] = {}
+    for row in rows:
+        blob = WEEKLY_URL.sub(" ", f"{row['title']} {row['summary']}".lower())
+        seen: set[str] = set()
+        for raw in WEEKLY_TOKEN.findall(blob):
+            token = raw.strip(".-/+")
+            if len(token) < 3 or len(token) > 30 or token.isdigit() or token in WEEKLY_STOPWORDS:
+                continue
+            if token.replace(".", "").replace("-", "").isdigit():
+                continue
+            if token in seen:
+                continue
+            seen.add(token)
+            term_counts[token] = term_counts.get(token, 0) + 1
+    trending = [
+        {"term": term, "count": count}
+        for term, count in sorted(term_counts.items(), key=lambda item: (-item[1], item[0]))
+        if count >= 3
+    ][:24]
+
+    category_counts: dict[str, int] = {}
+    for row in rows:
+        category_counts[row["category"]] = category_counts.get(row["category"], 0) + 1
+    categories = sorted(
+        ({"name": name, "count": count} for name, count in category_counts.items()),
+        key=lambda item: (-item["count"], item["name"]),
+    )
+
+    news = build_bulletin("weekly", limit)
+    active_sources = sorted({row["source_name"] for row in rows})
+    return {
+        "generatedAt": iso_timestamp(now),
+        "period": {
+            "label": "7 derniers jours",
+            "start": datetime.fromtimestamp(cutoff, PARIS).isoformat(),
+            "end": datetime.fromtimestamp(now, PARIS).isoformat(),
+        },
+        "stats": {
+            "articles": len(rows),
+            "sources": len(active_sources),
+            "cves": len(cve_hits),
+            "kev": sum(1 for item in cve_hits.values() if item["kev"]),
+            "categories": len(categories),
+        },
+        "topCve": top_cve,
+        "topNews": news["articles"][:10],
+        "trending": trending,
+        "categories": categories,
+        "sources": active_sources,
+        "ranking": news["ranking"],
+    }
+
+
 def build_ai_news_brief(cadence: str, limit: int, topic: str = "") -> dict:
     """Ask the local model to analyze already collected, attributed news."""
     bulletin = build_bulletin(cadence, limit)
@@ -2333,6 +2458,13 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 print(f"unified bulletin error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne du bulletin unifié"})
+            return
+        if parsed.path == "/bulletin/weekly":
+            try:
+                self.send_json(200, build_weekly_report())
+            except Exception as error:
+                print(f"weekly report error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne du rapport hebdomadaire"})
             return
         if parsed.path == "/ai/news-brief":
             try:
