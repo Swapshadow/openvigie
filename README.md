@@ -13,6 +13,21 @@ detection templates, and remediation guidance.
 > demonstration content. OpenVigie must not be treated as a production
 > vulnerability assessment or as an automatically verified newsroom.
 
+## 🚀 Quickstart
+
+Get OpenVigie running in 3 commands:
+
+```bash
+git clone https://github.com/Swapshadow/openvigie.git
+cd openvigie
+docker compose up -d
+```
+
+Then open **[http://localhost:3000](http://localhost:3000)** in your browser.
+
+**Requirements:** Docker Desktop installed. 8 GB RAM recommended for the Vigi AI
+assistant (Qwen2.5 3B runs locally in Docker).
+
 ## Product principles
 
 - **Asset first:** vendor, product, version, exposure, and business context.
