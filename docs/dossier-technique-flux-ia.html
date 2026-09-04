@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dossier technique informationnel sur les flux de veille, le collecteur et l'intégration de Qwen3 dans OpenVigie.">
+  <title>OpenVigie — Dossier technique des flux et de l’IA</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f3f7fb;
+      --muted: #9aaabc;
+      --paper: #081119;
+      --panel: #0e1b26;
+      --panel-2: #122635;
+      --line: #294152;
+      --cyan: #59dbe8;
+      --green: #78e6a4;
+      --amber: #ffc86b;
+      --red: #ff7d7d;
+      --blue: #85a9ff;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 4%, rgba(89, 219, 232, .12), transparent 27rem),
+        radial-gradient(circle at 92% 20%, rgba(133, 169, 255, .10), transparent 24rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.62;
+    }
+
+    a { color: var(--cyan); }
+    h1, h2, h3 { line-height: 1.15; letter-spacing: -.025em; }
+    h1 { max-width: 980px; margin: .25rem 0 1.25rem; font-size: clamp(2.6rem, 8vw, 6.6rem); }
+    h2 { margin: 0 0 1rem; font-size: clamp(1.7rem, 4vw, 2.7rem); }
+    h3 { margin: 0 0 .55rem; font-size: 1.08rem; }
+    p { margin: .55rem 0 1rem; }
+    code { color: #dffbff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .page { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+    .topline { height: 4px; background: linear-gradient(90deg, var(--cyan), var(--green), var(--blue)); }
+    .hero { padding: 68px 0 50px; border-bottom: 1px solid var(--line); }
+    .eyebrow { color: var(--cyan); font: 700 .78rem/1.2 ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+    .lead { max-width: 840px; color: #c6d3df; font-size: clamp(1.05rem, 2vw, 1.3rem); }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .chip { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(14, 27, 38, .72); font-size: .82rem; }
+    .chip strong { color: var(--ink); }
+
+    .toc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 24px 0; }
+    .toc a { padding: 14px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 10px; background: rgba(14, 27, 38, .7); }
+    .toc b { display: block; margin-bottom: 3px; color: var(--ink); }
+    main section { padding: 58px 0; border-bottom: 1px solid var(--line); }
+    .section-intro { max-width: 850px; color: #bdcbd7; font-size: 1.08rem; }
+
+    .status-grid, .criteria, .opportunities { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 26px; }
+    .card { padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg, rgba(18, 38, 53, .88), rgba(10, 23, 33, .92)); }
+    .card p:last-child { margin-bottom: 0; }
+    .label { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 12px; font: 700 .74rem/1 ui-monospace, monospace; letter-spacing: .11em; text-transform: uppercase; }
+    .label::before { width: 8px; height: 8px; border-radius: 50%; background: currentColor; content: ""; }
+    .current { color: var(--green); }
+    .target { color: var(--blue); }
+    .guard { color: var(--amber); }
+
+    .flow { margin: 30px 0 18px; padding: 25px; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: rgba(4, 12, 18, .72); }
+    .flow-row { display: grid; grid-template-columns: 1fr 42px 1.15fr 42px 1.15fr 42px 1fr; align-items: stretch; min-width: 940px; }
+    .node { position: relative; padding: 18px; border: 1px solid #365263; border-radius: 12px; background: var(--panel); }
+    .node small { display: block; margin-bottom: 8px; color: var(--muted); font: 700 .7rem/1.2 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+    .node strong { display: block; margin-bottom: 8px; font-size: 1.05rem; }
+    .node span { color: var(--muted); font-size: .89rem; }
+    .node.ai { border-color: rgba(133, 169, 255, .85); box-shadow: inset 0 0 30px rgba(133, 169, 255, .06); }
+    .arrow { display: grid; place-items: center; color: var(--cyan); font-size: 1.4rem; }
+    .flow-note { color: var(--muted); font-size: .86rem; }
+
+    .criteria { grid-template-columns: repeat(3, 1fr); }
+    .criterion-index { display: block; margin-bottom: 14px; color: var(--cyan); font: 700 .8rem/1 ui-monospace, monospace; }
+    .matrix { width: 100%; margin-top: 25px; border-collapse: collapse; border: 1px solid var(--line); background: rgba(8, 17, 25, .6); }
+    .matrix th, .matrix td { padding: 14px 15px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .matrix th { color: var(--cyan); background: var(--panel-2); font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; }
+    .matrix td:first-child { color: var(--ink); font-weight: 700; }
+    .matrix td { color: #b5c5d2; }
+
+    .layers { display: grid; gap: 10px; margin-top: 28px; }
+    .layer { display: grid; grid-template-columns: 155px 1fr 150px; gap: 18px; align-items: center; padding: 17px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .layer b { color: var(--cyan); }
+    .layer em { justify-self: end; color: var(--muted); font-style: normal; font-size: .82rem; }
+    .layer.ai-layer { border-color: rgba(133, 169, 255, .7); }
+
+    .rules { margin: 26px 0 0; padding: 22px; border-left: 4px solid var(--amber); background: rgba(255, 200, 107, .07); }
+    .rules strong { color: var(--amber); }
+    .rules ul, .card ul { margin-bottom: 0; padding-left: 20px; }
+    .rules li + li, .card li + li { margin-top: 6px; }
+
+    .timeline { display: grid; gap: 0; margin-top: 30px; }
+    .phase { display: grid; grid-template-columns: 145px 1fr; gap: 22px; padding: 0 0 28px; }
+    .phase-marker { position: relative; padding-right: 20px; color: var(--cyan); font: 700 .76rem/1.4 ui-monospace, monospace; text-transform: uppercase; }
+    .phase-marker::after { position: absolute; top: 4px; right: 0; bottom: -30px; width: 1px; background: var(--line); content: ""; }
+    .phase:last-child .phase-marker::after { display: none; }
+    .phase h3 { color: var(--ink); }
+
+    footer { padding: 35px 0 60px; color: var(--muted); font-size: .88rem; }
+    .foot-grid { display: flex; justify-content: space-between; gap: 24px; }
+
+    @media (max-width: 820px) {
+      .toc, .status-grid, .criteria, .opportunities { grid-template-columns: 1fr; }
+      .layer { grid-template-columns: 1fr; gap: 6px; }
+      .layer em { justify-self: start; }
+      .phase { grid-template-columns: 1fr; gap: 8px; }
+      .phase-marker::after { display: none; }
+      .foot-grid { display: block; }
+    }
+
+    @media print {
+      :root { color-scheme: light; --ink: #10202b; --muted: #50616c; --paper: #fff; --panel: #f5f8fa; --panel-2: #edf3f6; --line: #bdcbd3; --cyan: #00758a; --green: #08793e; --amber: #925b00; --blue: #315fbb; }
+      body { background: #fff; font-size: 10.5pt; }
+      .page { width: 100%; }
+      .hero { padding-top: 25px; }
+      .toc { display: none; }
+      main section { padding: 28px 0; }
+      .card, .flow, .layer { break-inside: avoid; background: #fff; }
+      .flow-row { min-width: 0; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topline"></div>
+  <header class="hero">
+    <div class="page">
+      <p class="eyebrow">OpenVigie · Architecture informationnelle</p>
+      <h1>Des flux choisis à une veille assistée par IA</h1>
+      <p class="lead">Ce dossier décrit comment OpenVigie sélectionne ses sources, organise sa matrice de flux, collecte l’information et prépare l’intégration de Qwen3 comme couche locale d’analyse. Il distingue volontairement le service disponible aujourd’hui de l’architecture cible.</p>
+      <div class="meta">
+        <span class="chip"><strong>Nature</strong> · Dossier technique informationnel</span>
+        <span class="chip"><strong>Périmètre</strong> · Veille cyber</span>
+        <span class="chip"><strong>IA cible</strong> · Qwen3 local</span>
+        <span class="chip"><strong>Principe</strong> · Sources attribuées et règles prioritaires</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="page toc" aria-label="Sommaire">
+    <a href="#vision"><b>01 · Vision</b>État actuel et cible</a>
+    <a href="#flux"><b>02 · Flux choisis</b>Critères et matrice</a>
+    <a href="#qwen"><b>03 · Qwen3</b>Rôle et limites</a>
+    <a href="#bulletin"><b>04 · Bulletin</b>Présent et évolution</a>
+  </nav>
+
+  <main class="page">
+    <section id="vision">
+      <p class="eyebrow">01 · Vue d’ensemble</p>
+      <h2>Une chaîne de veille traçable, enrichie progressivement</h2>
+      <p class="section-intro">OpenVigie ne part pas d’un flux d’actualité indifférencié. Le projet établit d’abord un périmètre de sources identifiées, puis les rapproche de sujets cyber, de vulnérabilités et du parc déclaré par l’utilisateur. L’IA apporte une lecture sémantique supplémentaire, sans remplacer les preuves ni les règles factuelles.</p>
+
+      <div class="status-grid">
+        <article class="card">
+          <span class="label current">Fonctionnement actuel</span>
+          <h3>Collecte et bulletin automatiques</h3>
+          <p>Le collecteur lit les flux RSS/Atom autorisés, normalise les métadonnées, conserve l’attribution, extrait les identifiants CVE et alimente un bulletin de nouvelles cyber récentes. Les corrélations NVD et CISA KEV renforcent la surveillance du parc.</p>
+        </article>
+        <article class="card">
+          <span class="label target">Architecture cible</span>
+          <h3>Couche d’analyse locale Qwen3</h3>
+          <p>Qwen3 doit intervenir comme moteur d’interprétation entre la matrice de flux et les traitements métier du collecteur : déduplication, classification, résumé, extraction d’entités et estimation de pertinence. D’autres modules pourront également l’appeler.</p>
+        </article>
+      </div>
+
+      <div class="flow" role="img" aria-label="Flux cible allant des sources au bulletin, à la matrice du parc et aux alertes">
+        <div class="flow-row">
+          <div class="node"><small>Entrée</small><strong>Sources choisies</strong><span>RSS/Atom, autorités, CERT, PSIRT, recherche et presse spécialisée.</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><small>Gouvernance</small><strong>Matrice de flux</strong><span>Qualification, thème, priorité, cadence, attribution et état de la source.</span></div>
+          <div class="arrow">→</div>
+          <div class="node ai"><small>Couche sémantique cible</small><strong>Qwen3 local</strong><span>Tri, regroupement, résumé et extraction, avec un résultat explicable.</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><small>Traitement métier</small><strong>Collecteur OpenVigie</strong><span>Normalisation, stockage, règles CVE/KEV/parc et distribution.</span></div>
+        </div>
+      </div>
+      <p class="flow-note">Sorties du collecteur : bulletin de veille, matrice de risques du parc, alertes prioritaires et futures fonctions spécialisées.</p>
+    </section>
+
+    <section id="flux">
+      <p class="eyebrow">02 · Sélection et matrice des flux</p>
+      <h2>Les flux sont choisis, qualifiés et surveillés</h2>
+      <p class="section-intro">L’objectif n’est pas de couvrir tout le Web. Une source entre dans OpenVigie parce qu’elle répond à un besoin identifié de la matrice : vulnérabilité, menace, détection, conformité, droits numériques, fuite de données ou contexte stratégique. Cette sélection limite le bruit et améliore la traçabilité.</p>
+
+      <div class="criteria">
+        <article class="card"><span class="criterion-index">CRITÈRE 01</span><h3>Autorité et compétence</h3><p>Priorité aux organismes publics, CERT, bases officielles, équipes PSIRT d’éditeurs et équipes de recherche reconnues.</p></article>
+        <article class="card"><span class="criterion-index">CRITÈRE 02</span><h3>Pertinence cyber</h3><p>Le contenu doit contribuer à une catégorie utile : vulnérabilité, menace, défense, conformité, incident ou environnement numérique.</p></article>
+        <article class="card"><span class="criterion-index">CRITÈRE 03</span><h3>Attribution</h3><p>Chaque information conserve le nom de la source, son lien d’origine, la date disponible et un extrait limité.</p></article>
+        <article class="card"><span class="criterion-index">CRITÈRE 04</span><h3>Qualité technique</h3><p>Le flux doit être récupérable de façon stable, être correctement daté et permettre une normalisation sans ambiguïté excessive.</p></article>
+        <article class="card"><span class="criterion-index">CRITÈRE 05</span><h3>Diversité</h3><p>La matrice évite qu’un seul éditeur ou média impose sa lecture. Elle combine sources primaires et analyses spécialisées.</p></article>
+        <article class="card"><span class="criterion-index">CRITÈRE 06</span><h3>Maîtrise du risque</h3><p>Les flux dégradés sont signalés ; leur indisponibilité ne doit pas effacer les dernières données connues ni produire de faux faits.</p></article>
+      </div>
+
+      <table class="matrix">
+        <thead><tr><th>Champ de la matrice</th><th>Fonction</th><th>Exemple de décision</th></tr></thead>
+        <tbody>
+          <tr><td>Source et nature</td><td>Identifier qui publie et avec quel niveau d’autorité.</td><td>Une alerte CERT est distinguée d’un article de presse.</td></tr>
+          <tr><td>Thématique</td><td>Router l’information vers le bon espace du produit.</td><td>Une CVE alimente les vulnérabilités ; une campagne APT alimente les menaces.</td></tr>
+          <tr><td>Priorité</td><td>Donner un poids initial indépendant de l’IA.</td><td>Une source officielle ou une alerte nationale reçoit un poids élevé.</td></tr>
+          <tr><td>Cadence</td><td>Déterminer la fréquence de relève et la fenêtre éditoriale.</td><td>Le bulletin quotidien privilégie les signaux récents.</td></tr>
+          <tr><td>Attribution et usage</td><td>Conserver la provenance et limiter la copie de contenu.</td><td>Titre, court extrait et lien vers la publication originale.</td></tr>
+          <tr><td>État de collecte</td><td>Rendre visibles les erreurs et les retards.</td><td>Une source temporairement indisponible passe en état dégradé.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="qwen">
+      <p class="eyebrow">03 · Positionnement de Qwen3</p>
+      <h2>Une couche d’intelligence locale et réutilisable</h2>
+      <p class="section-intro">Dans l’architecture cible, Qwen3 est placé logiquement après la qualification des flux et avant la publication des résultats métier par le collecteur. Il ne choisit pas seul les sources et ne devient pas une source. Il transforme les éléments déjà récupérés et attribués en informations plus faciles à exploiter.</p>
+
+      <div class="layers">
+        <div class="layer"><b>1 · Qualification</b><span>La matrice décide quels flux sont admis, leur catégorie, leur priorité et leur cadence.</span><em>Règles OpenVigie</em></div>
+        <div class="layer ai-layer"><b>2 · Analyse</b><span>Qwen3 regroupe les doublons, classe les sujets, résume en français et extrait CVE, éditeur, produit, version, APT et IOC.</span><em>IA locale</em></div>
+        <div class="layer"><b>3 · Arbitrage</b><span>Le collecteur applique les règles factuelles, rapproche le parc et calcule la priorité finale.</span><em>Code déterministe</em></div>
+        <div class="layer"><b>4 · Diffusion</b><span>Les résultats sont publiés dans le bulletin, la matrice et les alertes, avec leurs preuves.</span><em>Interfaces OpenVigie</em></div>
+      </div>
+
+      <div class="rules">
+        <strong>Règle d’architecture fondamentale</strong>
+        <ul>
+          <li>Une correspondance de version, une CVE officielle ou la présence dans CISA KEV prime toujours sur une appréciation de l’IA.</li>
+          <li>Qwen3 ne doit ni inventer une vulnérabilité, ni modifier une référence, ni supprimer l’incertitude d’une source.</li>
+          <li>Chaque synthèse doit rester rattachée aux éléments d’origine afin que l’utilisateur puisse vérifier l’information.</li>
+          <li>Le traitement local vise à ne pas transmettre le parc et les documents de veille à un service d’IA distant.</li>
+        </ul>
+      </div>
+
+      <h3 style="margin-top:32px">Implantations possibles ailleurs dans le projet</h3>
+      <div class="opportunities">
+        <article class="card"><h3>Bulletin</h3><p>Réécrire une synthèse courte, rapprocher plusieurs articles portant sur le même événement et proposer un ordre de lecture.</p></article>
+        <article class="card"><h3>Matrice du parc</h3><p>Expliquer en langage clair pourquoi un signal concerne un équipement, sans remplacer la vérification des versions.</p></article>
+        <article class="card"><h3>Alertes</h3><p>Produire une justification opérationnelle et un résumé des actions suggérées à partir de références vérifiées.</p></article>
+        <article class="card"><h3>Recherche</h3><p>Faciliter les requêtes en langage naturel, les regroupements thématiques et l’exploration des archives locales.</p></article>
+        <article class="card"><h3>Dossiers</h3><p>Préparer une chronologie, identifier les acteurs cités et signaler les informations contradictoires ou manquantes.</p></article>
+        <article class="card"><h3>Assistance éditoriale</h3><p>Proposer catégories, mots-clés et niveaux de confiance tout en laissant une piste de validation humaine.</p></article>
+      </div>
+    </section>
+
+    <section id="bulletin">
+      <p class="eyebrow">04 · Le bulletin de veille</p>
+      <h2>Aujourd’hui : les dernières nouvelles cyber, automatiquement</h2>
+      <p class="section-intro">Pour le moment, le bulletin constitue la vue automatique des dernières actualités cyber collectées par OpenVigie. Il est alimenté par les flux sélectionnés, organisé par fenêtres temporelles et classé selon des signaux transparents : fraîcheur, autorité de la source, présence de CVE et diversité des provenances.</p>
+
+      <div class="timeline">
+        <article class="phase">
+          <div class="phase-marker">Disponible</div>
+          <div><h3>Bulletin automatique fondé sur les flux</h3><p>Les titres, courts extraits, dates, catégories et liens originaux sont collectés et affichés. Le lecteur conserve un accès direct à la source. L’automatisation continue lorsque l’interface Web est fermée, tant que les conteneurs OpenVigie fonctionnent.</p></div>
+        </article>
+        <article class="phase">
+          <div class="phase-marker">Étape suivante</div>
+          <div><h3>Tri et enrichissement par Qwen3</h3><p>L’IA locale pourra réduire les doublons, générer des résumés français, détecter les entités importantes et expliquer la pertinence d’une actualité pour le parc suivi.</p></div>
+        </article>
+        <article class="phase">
+          <div class="phase-marker">Évolution</div>
+          <div><h3>Mise à jour assistée du bulletin</h3><p>À terme, Qwen3 pourra contribuer directement à la mise à jour éditoriale du bulletin : regroupement d’événements, propositions de priorités et constitution de synthèses. La publication restera soumise aux règles de traçabilité et aux signaux factuels.</p></div>
+        </article>
+      </div>
+
+      <div class="status-grid">
+        <article class="card"><span class="label guard">Ce que le bulletin est</span><p>Un point d’entrée de veille, récent, attribué et automatiquement renouvelé à partir d’une sélection de sources cyber.</p></article>
+        <article class="card"><span class="label guard">Ce qu’il n’est pas</span><p>Une preuve autonome, un audit de sécurité, une validation de correctif ou une décision de remédiation sans contrôle des sources primaires.</p></article>
+      </div>
+    </section>
+
+    <section id="synthese">
+      <p class="eyebrow">05 · Synthèse</p>
+      <h2>Le principe directeur</h2>
+      <p class="section-intro">OpenVigie organise la veille en trois responsabilités distinctes : la matrice gouverne les flux, Qwen3 interprète leur contenu, et le collecteur sécurise les données et applique les règles métier. Cette séparation permet d’utiliser l’IA dans plusieurs parties du projet sans lui confier la vérité factuelle ni le choix final des priorités.</p>
+      <div class="flow">
+        <div class="flow-row" style="grid-template-columns:1fr 42px 1fr 42px 1fr 42px 1fr">
+          <div class="node"><small>Choisir</small><strong>Flux maîtrisés</strong><span>Sources pertinentes, attribuées et suivies.</span></div><div class="arrow">→</div>
+          <div class="node"><small>Comprendre</small><strong>Qwen3</strong><span>Analyse locale, structurée et explicable.</span></div><div class="arrow">→</div>
+          <div class="node"><small>Arbitrer</small><strong>Règles factuelles</strong><span>CVE, versions, parc et CISA KEV en priorité.</span></div><div class="arrow">→</div>
+          <div class="node"><small>Informer</small><strong>OpenVigie</strong><span>Bulletin, matrice, alertes et futurs services.</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page">
+    <div class="foot-grid"><span>OpenVigie · Dossier technique informationnel</span><span>Document de travail — fonctionnement actuel et architecture cible</span></div>
+  </footer>
+</body>
+</html>
