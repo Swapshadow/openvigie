@@ -303,6 +303,18 @@ FEED_SOURCES = (
         "kind": "Écosystème IA ouvert", "default_category": "IA · modèles & plateformes",
         "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
     },
+    {
+        "id": "anthropic-news", "name": "Anthropic",
+        "feed_url": "https://www.anthropic.com/rss.xml", "homepage": "https://www.anthropic.com/news",
+        "kind": "Éditeur IA · annonces & sécurité", "default_category": "IA · modèles & plateformes",
+        "priority": 7, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "openai-atlas", "name": "OpenAI Atlas",
+        "feed_url": "https://openai.com/atlas/rss.xml", "homepage": "https://openai.com/index/introducing-chatgpt-atlas/",
+        "kind": "Éditeur IA · navigateur & agents", "default_category": "IA · modèles & plateformes",
+        "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
 )
 
 CATEGORY_RULES = (
