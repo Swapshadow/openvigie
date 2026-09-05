@@ -55,6 +55,20 @@ function readInventory(): InventoryAsset[] {
 
 type MatchedAsset = { asset: InventoryAsset; name: string };
 
+/** Words present in product names that identify no product.
+ *
+ * "Stormshield Network Security" must match on "stormshield" alone; matching on
+ * "security" would tag every advisory as concerning the asset. */
+const GENERIC_TERMS = new Set([
+  'server', 'servers', 'desktop', 'linux', 'unix', 'windows',
+  'network', 'networks', 'networking', 'system', 'systems', 'software',
+  'secure', 'security', 'manager', 'management', 'agent', 'client',
+  'cloud', 'service', 'services', 'enterprise', 'platform', 'edition',
+  'appliance', 'appliances', 'suite', 'center', 'centre', 'console',
+  'protection', 'solution', 'solutions', 'professional', 'standard',
+  'advanced', 'premium', 'core', 'base', 'open', 'source', 'project',
+]);
+
 /** Does this CERT-FR entry name something the user actually runs?
  *
  * Matching stays deliberately conservative — the catalog vendor name, or a
@@ -67,9 +81,11 @@ function matchesInventory(entry: CertEntry, assets: InventoryAsset[]): MatchedAs
   for (const asset of assets) {
     const vendor = findVendor(asset.vendorId);
     const product = findProduct(asset.vendorId, asset.productId);
-    // Product names carry slashes and qualifiers ("FortiOS / FortiGate"); any
-    // token of four characters or more is specific enough to trust.
-    const tokens = product.name.toLowerCase().split(/[^a-z0-9.+]+/).filter((token) => token.length >= 4);
+    // Product names carry slashes and qualifiers ("FortiOS / FortiGate"); keep
+    // tokens of four characters or more, minus the ones that name no product.
+    const tokens = product.name.toLowerCase()
+      .split(/[^a-z0-9.+]+/)
+      .filter((token) => token.length >= 4 && !GENERIC_TERMS.has(token));
     const hit = haystack.includes(vendor.name.toLowerCase()) || tokens.some((token) => haystack.includes(token));
     if (hit) matched.push({ asset, name: asset.label || `${vendor.name} ${product.name}` });
   }

@@ -257,6 +257,410 @@ export const vendorCatalog: VendorDefinition[] = [
       },
     ],
   },
+  // ── Postes de travail, navigateurs, applicatif et sécurité française ──────
+  // Versions issues du dictionnaire CPE du NVD : une version absente de cette
+  // base ne remonterait aucune CVE et se lirait à tort comme « aucun risque ».
+  {
+    id: 'apple',
+    name: 'Apple',
+    short: 'AP',
+    products: [
+      {
+        id: 'macos', name: 'macOS', family: 'Poste de travail', part: 'o',
+        cpeVendor: 'apple', cpeProduct: 'macos',
+        versions: ['26.6.1', '26.5.2', '26.5', '26.4', '26.3.1', '26.3', '26.2', '26.1', '26.0.0', '26.0', '15.7.9', '15.7.7'],
+        advisoryUrl: 'https://support.apple.com/en-us/HT201222',
+      },
+      {
+        id: 'ios', name: 'iOS / iPhone', family: 'Mobile', part: 'o',
+        cpeVendor: 'apple', cpeProduct: 'iphone_os',
+        versions: ['26.5.2', '26.5', '26.4.2', '26.4', '26.3.1', '26.3', '26.2', '26.1', '26.0.0', '26.0', '18.7.9', '18.7.8'],
+        advisoryUrl: 'https://support.apple.com/en-us/HT201222',
+      },
+      {
+        id: 'ipados', name: 'iPadOS', family: 'Mobile', part: 'o',
+        cpeVendor: 'apple', cpeProduct: 'ipados',
+        versions: ['26.5.2', '26.5', '26.4.2', '26.4', '26.3.1', '26.3', '26.2', '26.1', '26.0.0', '26.0', '18.7.9', '18.7.8'],
+        advisoryUrl: 'https://support.apple.com/en-us/HT201222',
+      },
+      {
+        id: 'safari', name: 'Safari', family: 'Navigateur', part: 'a',
+        cpeVendor: 'apple', cpeProduct: 'safari',
+        versions: ['26.6.1', '26.6', '26.5.2', '26.5', '26.4', '26.3', '26.2', '26.1', '26.0', '22', '18.6', '18.5'],
+        advisoryUrl: 'https://support.apple.com/en-us/HT201222',
+      },
+    ],
+  },
+  {
+    id: 'stormshield',
+    name: 'Stormshield',
+    short: 'SS',
+    products: [
+      {
+        id: 'sns', name: 'Stormshield Network Security', family: 'Pare-feu', part: 'o',
+        cpeVendor: 'stormshield', cpeProduct: 'stormshield_network_security',
+        versions: ['4.7.2', '4.7.1', '4.7.0', '4.6.10', '4.6.9', '4.6.6', '4.6.5', '4.6.4', '4.6.3', '4.6.2', '4.6.1', '4.6.0'],
+        advisoryUrl: 'https://advisories.stormshield.eu/',
+      },
+    ],
+  },
+  {
+    id: 'google',
+    name: 'Google',
+    short: 'GO',
+    products: [
+      {
+        id: 'chrome', name: 'Chrome', family: 'Navigateur', part: 'a',
+        cpeVendor: 'google', cpeProduct: 'chrome',
+        versions: ['152.0.7977.65', '151.0.7922.173', '151.0.7922.169', '151.0.7922.137', '151.0.7922.109', '151.0.7922.72', '150.0.7871.187', '150.0.7871.186', '150.0.7871.182', '150.0.7871.128', '150.0.7871.125', '150.0.7871.115'],
+        advisoryUrl: 'https://chromereleases.googleblog.com/',
+      },
+      {
+        id: 'android', name: 'Android', family: 'Mobile', part: 'o',
+        cpeVendor: 'google', cpeProduct: 'android',
+        versions: ['15.0', '14.0', '13.0.0', '13.0', '12.1', '12.0l', '12.0', '12l', '11.0', '10.0', '9.0', '8.1'],
+        advisoryUrl: 'https://source.android.com/docs/security/bulletin',
+      },
+    ],
+  },
+  {
+    id: 'mozilla',
+    name: 'Mozilla',
+    short: 'MZ',
+    products: [
+      {
+        id: 'firefox', name: 'Firefox', family: 'Navigateur', part: 'a',
+        cpeVendor: 'mozilla', cpeProduct: 'firefox',
+        versions: ['155.0.0', '154.0.1', '154.0.0', '153.2.0', '153.1.0', '153.0.4', '153.0.3', '153.0.1', '153.0.0', '152.0.6', '152.0.5', '152.0.4'],
+        advisoryUrl: 'https://www.mozilla.org/en-US/security/advisories/',
+      },
+      {
+        id: 'firefox-esr', name: 'Firefox ESR', family: 'Navigateur', part: 'a',
+        cpeVendor: 'mozilla', cpeProduct: 'firefox_esr',
+        versions: ['115.7', '115.6', '115.5.0', '115.4.1', '115.4', '115.2', '115.1', '115.0.3', '115.0.2', '115.0.1', '115.0', '102.15'],
+        advisoryUrl: 'https://www.mozilla.org/en-US/security/advisories/',
+      },
+      {
+        id: 'thunderbird', name: 'Thunderbird', family: 'Messagerie', part: 'a',
+        cpeVendor: 'mozilla', cpeProduct: 'thunderbird',
+        versions: ['155.0', '154.0', '153.2.0', '153.1.1', '153.1.0', '153.0.3', '153.0.2', '153.0.1', '151.0.1', '149.0.2', '149.0', '148.0.1'],
+        advisoryUrl: 'https://www.mozilla.org/en-US/security/advisories/',
+      },
+    ],
+  },
+  {
+    id: 'wallix',
+    name: 'Wallix',
+    short: 'WX',
+    products: [
+      {
+        id: 'bastion', name: 'WALLIX Bastion', family: 'PAM / Accès privilégiés', part: 'a',
+        cpeVendor: 'wallix', cpeProduct: 'bastion',
+        versions: ['10.0.5', '10.0', '9.0.9'],
+        advisoryUrl: 'https://www.wallix.com/security-advisories/',
+      },
+    ],
+  },
+  {
+    id: 'spip',
+    name: 'SPIP',
+    short: 'SP',
+    products: [
+      {
+        id: 'spip', name: 'SPIP', family: 'CMS', part: 'a',
+        cpeVendor: 'spip', cpeProduct: 'spip',
+        versions: ['5.0.0', '4.4.15', '4.4.14', '4.4.13', '4.4.12', '4.4.11', '4.4.10', '4.4.9', '4.4.8', '4.4.7', '4.4.6', '4.4.5'],
+        advisoryUrl: 'https://spip.net/fr_article6867.html',
+      },
+    ],
+  },
+  {
+    id: 'glpi',
+    name: 'GLPI Project',
+    short: 'GL',
+    products: [
+      {
+        id: 'glpi', name: 'GLPI', family: 'ITSM / Inventaire', part: 'a',
+        cpeVendor: 'glpi-project', cpeProduct: 'glpi',
+        versions: ['11.0.7', '11.0.6', '11.0.5', '11.0.4', '11.0.3', '11.0.2', '11.0.1', '11.0.0', '10.0.25', '10.0.24', '10.0.23', '10.0.22'],
+        advisoryUrl: 'https://github.com/glpi-project/glpi/security/advisories',
+      },
+    ],
+  },
+  {
+    id: 'nextcloud',
+    name: 'Nextcloud',
+    short: 'NC',
+    products: [
+      {
+        id: 'server', name: 'Nextcloud Server', family: 'Collaboration', part: 'a',
+        cpeVendor: 'nextcloud', cpeProduct: 'nextcloud_server',
+        versions: ['34.0.0', '33.0.5', '33.0.4', '33.0.3', '33.0.2', '33.0.1', '33.0.0', '32.0.11', '32.0.10', '32.0.9', '32.0.8', '32.0.7'],
+        advisoryUrl: 'https://nextcloud.com/security/advisories/',
+      },
+    ],
+  },
+  {
+    id: 'zimbra',
+    name: 'Zimbra',
+    short: 'ZB',
+    products: [
+      {
+        id: 'collaboration', name: 'Zimbra Collaboration', family: 'Messagerie', part: 'a',
+        cpeVendor: 'zimbra', cpeProduct: 'collaboration',
+        versions: ['10.1.5', '10.1.4', '10.1.3', '10.1.2', '10.1.1', '10.1.0', '10.0.13', '10.0.12', '10.0.11', '10.0.10', '10.0.9', '10.0.8'],
+        advisoryUrl: 'https://wiki.zimbra.com/wiki/Security_Center',
+      },
+    ],
+  },
+  {
+    id: 'atlassian',
+    name: 'Atlassian',
+    short: 'AT',
+    products: [
+      {
+        id: 'confluence', name: 'Confluence Server / DC', family: 'Collaboration', part: 'a',
+        cpeVendor: 'atlassian', cpeProduct: 'confluence_server',
+        versions: ['10.0.2', '10.0.0', '9.2.7', '9.2.0', '8.9.4', '8.9.2', '8.9.0', '8.8.1', '8.8.0', '8.7.2', '8.7.1', '8.7.0'],
+        advisoryUrl: 'https://confluence.atlassian.com/security/',
+      },
+      {
+        id: 'jira', name: 'Jira Server / DC', family: 'Gestion de projet', part: 'a',
+        cpeVendor: 'atlassian', cpeProduct: 'jira_server',
+        versions: ['11.1.0', '11.0.0', '10.3.12', '10.3.0', '9.12.28', '9.12.25', '9.12.24', '9.12.23', '9.12.22', '9.12.20', '9.12.19', '9.12.18'],
+        advisoryUrl: 'https://confluence.atlassian.com/security/',
+      },
+    ],
+  },
+  {
+    id: 'elastic',
+    name: 'Elastic',
+    short: 'EL',
+    products: [
+      {
+        id: 'elasticsearch', name: 'Elasticsearch', family: 'Moteur de recherche', part: 'a',
+        cpeVendor: 'elastic', cpeProduct: 'elasticsearch',
+        versions: ['9.5.2', '9.5.1', '9.5.0', '9.4.6', '9.4.5', '9.4.4', '9.4.3', '9.4.2', '9.4.1', '9.4.0', '9.3.8', '9.3.7'],
+        advisoryUrl: 'https://discuss.elastic.co/c/announcements/security-announcements/31',
+      },
+      {
+        id: 'kibana', name: 'Kibana', family: 'Visualisation', part: 'a',
+        cpeVendor: 'elastic', cpeProduct: 'kibana',
+        versions: ['9.4.4', '9.4.3', '9.4.2', '9.4.1', '9.4.0', '9.3.8', '9.3.7', '9.3.6', '9.3.5', '9.3.4', '9.3.3', '9.3.2'],
+        advisoryUrl: 'https://discuss.elastic.co/c/announcements/security-announcements/31',
+      },
+    ],
+  },
+  {
+    id: 'wordpress',
+    name: 'WordPress',
+    short: 'WP',
+    products: [
+      {
+        id: 'core', name: 'WordPress Core', family: 'CMS', part: 'a',
+        cpeVendor: 'wordpress', cpeProduct: 'wordpress',
+        versions: ['7.0.2', '7.0.1', '7.0', '6.9.5', '6.9.4', '6.9.3', '6.9.2', '6.9.1', '6.9', '6.8.6', '6.8.5', '6.8.4'],
+        advisoryUrl: 'https://wordpress.org/news/category/security/',
+      },
+    ],
+  },
+  {
+    id: 'postgresql',
+    name: 'PostgreSQL',
+    short: 'PG',
+    products: [
+      {
+        id: 'postgresql', name: 'PostgreSQL', family: 'Base de données', part: 'a',
+        cpeVendor: 'postgresql', cpeProduct: 'postgresql',
+        versions: ['18.5', '18.4', '18.3', '18.2', '18.1', '18.0', '17.11', '17.10', '17.9', '17.8', '17.7', '17.6'],
+        advisoryUrl: 'https://www.postgresql.org/support/security/',
+      },
+    ],
+  },
+  {
+    id: 'oracle-mysql',
+    name: 'Oracle MySQL',
+    short: 'MY',
+    products: [
+      {
+        id: 'mysql', name: 'MySQL Server', family: 'Base de données', part: 'a',
+        cpeVendor: 'oracle', cpeProduct: 'mysql',
+        versions: ['9.5.0', '9.3.0', '9.2.0', '9.1.0', '9.0.1', '9.0.0', '8.4.7', '8.4.5', '8.4.4', '8.4.2', '8.4.0', '8.3.0'],
+        advisoryUrl: 'https://www.oracle.com/security-alerts/',
+      },
+    ],
+  },
+  {
+    id: 'apache',
+    name: 'Apache Software Foundation',
+    short: 'AS',
+    products: [
+      {
+        id: 'httpd', name: 'Apache HTTP Server', family: 'Serveur web', part: 'a',
+        cpeVendor: 'apache', cpeProduct: 'http_server',
+        versions: ['3.1', '2.4.68', '2.4.67', '2.4.66', '2.4.65', '2.4.64', '2.4.63', '2.4.62', '2.4.61', '2.4.60', '2.4.59', '2.4.58'],
+        advisoryUrl: 'https://httpd.apache.org/security_report.html',
+      },
+      {
+        id: 'tomcat', name: 'Apache Tomcat', family: 'Serveur applicatif', part: 'a',
+        cpeVendor: 'apache', cpeProduct: 'tomcat',
+        versions: ['11.0.24', '11.0.23', '11.0.22', '11.0.21', '11.0.20', '11.0.18', '11.0.17', '11.0.16', '11.0.15', '11.0.14', '11.0.13', '11.0.12'],
+        advisoryUrl: 'https://tomcat.apache.org/security.html',
+      },
+    ],
+  },
+  {
+    id: 'nginx',
+    name: 'nginx (F5)',
+    short: 'NX',
+    products: [
+      {
+        id: 'nginx', name: 'nginx', family: 'Serveur web', part: 'a',
+        cpeVendor: 'f5', cpeProduct: 'nginx',
+        versions: ['1.34.2', '1.34.1', '1.29.3', '1.29.2', '1.29.1', '1.29.0', '1.28.0', '1.27.5', '1.27.4', '1.27.3', '1.27.2', '1.27.1'],
+        advisoryUrl: 'https://nginx.org/en/security_advisories.html',
+      },
+    ],
+  },
+  {
+    id: 'openssl',
+    name: 'OpenSSL',
+    short: 'SL',
+    products: [
+      {
+        id: 'openssl', name: 'OpenSSL', family: 'Bibliothèque cryptographique', part: 'a',
+        cpeVendor: 'openssl', cpeProduct: 'openssl',
+        versions: ['4.0.0', '3.6.3', '3.6.2', '3.6.1', '3.6.0', '3.5.7', '3.5.6', '3.5.5', '3.5.4', '3.5.3', '3.5.2', '3.5.1'],
+        advisoryUrl: 'https://openssl-library.org/news/vulnerabilities/',
+      },
+    ],
+  },
+  {
+    id: 'gitlab',
+    name: 'GitLab',
+    short: 'GI',
+    products: [
+      {
+        id: 'gitlab', name: 'GitLab CE / EE', family: 'Forge logicielle', part: 'a',
+        cpeVendor: 'gitlab', cpeProduct: 'gitlab',
+        versions: ['19.3.1', '19.3.0', '19.2.5', '19.2.4', '19.2.3', '19.2.2', '19.2.1', '19.2.0', '19.1.7', '19.1.6', '19.1.5', '19.1.4'],
+        advisoryUrl: 'https://about.gitlab.com/releases/categories/releases/',
+      },
+    ],
+  },
+  {
+    id: 'jenkins',
+    name: 'Jenkins',
+    short: 'JK',
+    products: [
+      {
+        id: 'jenkins', name: 'Jenkins', family: 'Intégration continue', part: 'a',
+        cpeVendor: 'jenkins', cpeProduct: 'jenkins',
+        versions: ['5.555.3', '5.555.1', '5.555', '2.568', '2.567', '2.566', '2.565', '2.564', '2.563', '2.562', '2.561', '2.560'],
+        advisoryUrl: 'https://www.jenkins.io/security/advisories/',
+      },
+    ],
+  },
+  {
+    id: 'grafana',
+    name: 'Grafana Labs',
+    short: 'GF',
+    products: [
+      {
+        id: 'grafana', name: 'Grafana', family: 'Supervision', part: 'a',
+        cpeVendor: 'grafana', cpeProduct: 'grafana',
+        versions: ['13.0.2', '13.0.1', '13.0.0', '12.4.4', '12.4.3', '12.4.2', '12.4.1', '12.4.0', '12.3.7', '12.3.6', '12.3.5', '12.3.4'],
+        advisoryUrl: 'https://grafana.com/security/security-advisories/',
+      },
+    ],
+  },
+  {
+    id: 'opnsense',
+    name: 'OPNsense',
+    short: 'OP',
+    products: [
+      {
+        id: 'opnsense', name: 'OPNsense', family: 'Pare-feu', part: 'o',
+        cpeVendor: 'opnsense', cpeProduct: 'opnsense',
+        versions: ['26.7', '26.1.8', '26.1.7', '26.1.6', '26.1.5', '26.1.4', '26.1.3', '26.1.2', '26.1.1', '26.1.a', '26.1', '25.7.11'],
+        advisoryUrl: 'https://docs.opnsense.org/security.html',
+      },
+    ],
+  },
+  {
+    id: 'pfsense',
+    name: 'Netgate pfSense',
+    short: 'PF',
+    products: [
+      {
+        id: 'pfsense', name: 'pfSense', family: 'Pare-feu', part: 'o',
+        cpeVendor: 'pfsense', cpeProduct: 'pfsense',
+        versions: ['2.6.0', '2.5.2', '2.5.1', '2.5.0', '2.4.5', '2.4.4', '2.4.1', '2.4.0', '2.3.4.1', '2.3.4', '2.3.3.1', '2.3.3'],
+        advisoryUrl: 'https://docs.netgate.com/pfsense/en/latest/releases/',
+      },
+    ],
+  },
+  {
+    id: 'mikrotik',
+    name: 'MikroTik',
+    short: 'MT',
+    products: [
+      {
+        id: 'routeros', name: 'RouterOS', family: 'Routage', part: 'o',
+        cpeVendor: 'mikrotik', cpeProduct: 'routeros',
+        versions: ['7.18', '7.12', '7.11.2', '7.11.1', '7.11', '7.10.2', '7.10.1', '7.10', '7.9.2', '7.9.1', '7.9', '7.8'],
+        advisoryUrl: 'https://mikrotik.com/download/changelogs',
+      },
+    ],
+  },
+  {
+    id: 'openvpn',
+    name: 'OpenVPN',
+    short: 'OV',
+    products: [
+      {
+        id: 'openvpn', name: 'OpenVPN', family: 'VPN', part: 'a',
+        cpeVendor: 'openvpn', cpeProduct: 'openvpn',
+        versions: ['3.6.1', '3.6', '2.8.3', '2.8.1', '2.8.0', '2.7.5', '2.7.4', '2.7.3', '2.7.2', '2.7.1', '2.7', '2.7.0'],
+        advisoryUrl: 'https://openvpn.net/security-advisories/',
+      },
+    ],
+  },
+  {
+    id: 'microsoft-endpoint',
+    name: 'Microsoft (poste & messagerie)',
+    short: 'MW',
+    products: [
+      {
+        id: 'windows-11', name: 'Windows 11', family: 'Poste de travail', part: 'o',
+        cpeVendor: 'microsoft', cpeProduct: 'windows_11_24h2',
+        versions: ['24H2', '23H2', '22H2'],
+        advisoryUrl: 'https://msrc.microsoft.com/update-guide',
+        versionOptional: true,
+      },
+      {
+        id: 'windows-10', name: 'Windows 10', family: 'Poste de travail', part: 'o',
+        cpeVendor: 'microsoft', cpeProduct: 'windows_10_22h2',
+        versions: ['22H2', '21H2'],
+        advisoryUrl: 'https://msrc.microsoft.com/update-guide',
+        versionOptional: true,
+      },
+      {
+        id: 'exchange', name: 'Exchange Server', family: 'Messagerie', part: 'a',
+        cpeVendor: 'microsoft', cpeProduct: 'exchange_server',
+        versions: ['2019', '2016', 'SE'],
+        advisoryUrl: 'https://msrc.microsoft.com/update-guide',
+        versionOptional: true,
+      },
+      {
+        id: 'sharepoint', name: 'SharePoint Server', family: 'Collaboration', part: 'a',
+        cpeVendor: 'microsoft', cpeProduct: 'sharepoint_server',
+        versions: ['Subscription Edition', '2019', '2016'],
+        advisoryUrl: 'https://msrc.microsoft.com/update-guide',
+        versionOptional: true,
+      },
+    ],
+  },
 ];
 
 export function findVendor(vendorId: string) {

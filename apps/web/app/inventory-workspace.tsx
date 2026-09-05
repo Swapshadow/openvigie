@@ -9,6 +9,7 @@ type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'KEV';
 
 const STORAGE_KEY = 'openvigie.inventory.v1';
 const AUTO_REFRESH_MS = 24 * 60 * 60 * 1000;
+const CUSTOM_VERSION = '__custom__';
 
 function formatDate(value: string) {
   if (!value) return '—';
@@ -30,6 +31,8 @@ export default function InventoryWorkspace() {
   const [vendorId, setVendorId] = useState(vendorCatalog[0].id);
   const [productId, setProductId] = useState(vendorCatalog[0].products[0].id);
   const [version, setVersion] = useState('');
+  const [customVersion, setCustomVersion] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState('');
   const [label, setLabel] = useState('');
   const [exposure, setExposure] = useState('Réseau interne');
   const [formOpen, setFormOpen] = useState(true);
@@ -46,6 +49,30 @@ export default function InventoryWorkspace() {
 
   const selectedVendor = findVendor(vendorId);
   const selectedProduct = findProduct(vendorId, productId);
+
+  // Free-text search across the whole catalog: with 55 brands, walking two
+  // chained dropdowns to find "macOS" is slower than typing it.
+  const catalogMatches = useMemo(() => {
+    const needle = catalogQuery.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const hits: Array<{ vendor: typeof vendorCatalog[number]; product: typeof vendorCatalog[number]['products'][number] }> = [];
+    for (const vendor of vendorCatalog) {
+      for (const product of vendor.products) {
+        const haystack = `${vendor.name} ${product.name} ${product.family}`.toLowerCase();
+        if (haystack.includes(needle)) hits.push({ vendor, product });
+        if (hits.length >= 8) return hits;
+      }
+    }
+    return hits;
+  }, [catalogQuery]);
+
+  const selectFromCatalog = (nextVendorId: string, nextProductId: string) => {
+    setVendorId(nextVendorId);
+    setProductId(nextProductId);
+    setVersion('');
+    setCustomVersion(false);
+    setCatalogQuery('');
+  };
   const selectedAsset = inventory.find((asset) => asset.id === selectedAssetId) ?? inventory[0] ?? null;
   const assetVendor = selectedAsset ? findVendor(selectedAsset.vendorId) : null;
   const assetProduct = selectedAsset ? findProduct(selectedAsset.vendorId, selectedAsset.productId) : null;
@@ -156,6 +183,8 @@ export default function InventoryWorkspace() {
     setData(null);
     setLabel('');
     setVersion('');
+    setCustomVersion(false);
+    setCatalogQuery('');
     setFormError('');
     setFormOpen(false);
   };
@@ -201,6 +230,36 @@ export default function InventoryWorkspace() {
             <div><span>01</span><h2 id="asset-builder-title">Décrire un équipement</h2></div>
             <p>La marque, le produit et la version servent à construire la correspondance CPE.</p>
           </header>
+          <label className="asset-finder">
+            <span>Rechercher un équipement</span>
+            <input
+              type="search"
+              value={catalogQuery}
+              onChange={(event) => setCatalogQuery(event.target.value)}
+              placeholder="Ex. Stormshield, macOS, FortiGate, Chrome…"
+              aria-label="Rechercher dans le catalogue"
+            />
+            {catalogQuery.trim() ? (
+              catalogMatches.length ? (
+                <ul className="asset-finder-results">
+                  {catalogMatches.map(({ vendor, product }) => (
+                    <li key={`${vendor.id}:${product.id}`}>
+                      <button type="button" onClick={() => selectFromCatalog(vendor.id, product.id)}>
+                        <strong>{product.name}</strong>
+                        <em>{vendor.name}</em>
+                        <span>{product.family}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="asset-finder-empty">
+                  Aucun équipement du catalogue ne correspond. {vendorCatalog.length} marques couvertes.
+                </p>
+              )
+            ) : null}
+          </label>
+
           <div className="asset-form-grid">
             <label>
               <span>Marque</span>
@@ -209,22 +268,53 @@ export default function InventoryWorkspace() {
                 setVendorId(nextVendor.id);
                 setProductId(nextVendor.products[0].id);
                 setVersion('');
+                setCustomVersion(false);
               }}>
                 {vendorCatalog.map((vendor) => <option value={vendor.id} key={vendor.id}>{vendor.name}</option>)}
               </select>
             </label>
             <label>
               <span>Équipement / logiciel</span>
-              <select value={productId} onChange={(event) => { setProductId(event.target.value); setVersion(''); }}>
-                {selectedVendor.products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}
+              <select value={productId} onChange={(event) => { setProductId(event.target.value); setVersion(''); setCustomVersion(false); }}>
+                {selectedVendor.products.map((product) => (
+                  <option value={product.id} key={product.id}>{product.name} · {product.family}</option>
+                ))}
               </select>
             </label>
             <label>
               <span>Version installée {selectedProduct.versionOptional ? '(facultatif)' : ''}</span>
-              <input value={version} list="version-suggestions" onChange={(event) => setVersion(event.target.value)} placeholder={selectedProduct.versionOptional ? 'Service SaaS' : 'Ex. 7.4.2'} />
-              <datalist id="version-suggestions">
-                {selectedProduct.versions.map((item) => <option value={item} key={item} />)}
-              </datalist>
+              {/* A version NVD never indexed silently returns zero CVE, which reads
+                  as "nothing affects me". The known list is therefore the default
+                  path, and free text is an explicit opt-out. */}
+              {customVersion ? (
+                <input
+                  value={version}
+                  onChange={(event) => setVersion(event.target.value)}
+                  placeholder={selectedProduct.versionOptional ? 'Service SaaS' : 'Ex. 7.4.2'}
+                  autoFocus
+                />
+              ) : (
+                <select
+                  value={version}
+                  onChange={(event) => {
+                    if (event.target.value === CUSTOM_VERSION) {
+                      setCustomVersion(true);
+                      setVersion('');
+                      return;
+                    }
+                    setVersion(event.target.value);
+                  }}
+                >
+                  <option value="">{selectedProduct.versionOptional ? 'Non applicable' : 'Choisir une version…'}</option>
+                  {selectedProduct.versions.map((item) => <option value={item} key={item}>{item}</option>)}
+                  <option value={CUSTOM_VERSION}>Autre version…</option>
+                </select>
+              )}
+              {customVersion ? (
+                <button type="button" className="version-back" onClick={() => { setCustomVersion(false); setVersion(''); }}>
+                  ← Versions connues
+                </button>
+              ) : null}
             </label>
             <label>
               <span>Nom dans votre parc</span>

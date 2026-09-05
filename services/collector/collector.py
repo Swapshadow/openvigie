@@ -35,6 +35,18 @@ MAX_RESULTS = 100
 MAX_FEED_BYTES = 2_000_000
 SAFE_TEXT = re.compile(r"^[\w .+()/,:-]*$", re.UNICODE)
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
+# Words that appear in product names but identify no product. "Stormshield
+# Network Security" must correlate on "stormshield", never on "security", or a
+# SonicWall advisory surfaces under a Stormshield asset.
+GENERIC_ASSET_TERMS = frozenset({
+    "server", "servers", "desktop", "linux", "unix", "windows",
+    "network", "networks", "networking", "system", "systems", "software",
+    "secure", "security", "manager", "management", "agent", "client",
+    "cloud", "service", "services", "enterprise", "platform", "edition",
+    "appliance", "appliances", "suite", "center", "centre", "console",
+    "protection", "solution", "solutions", "professional", "standard",
+    "advanced", "premium", "core", "base", "open", "source", "project",
+})
 # Sponsored webinars and event trailers published inside trade-press news feeds.
 PROMO_TITLE = re.compile(
     r"^\s*\[(?:virtual\s+event|webinar|sponsored|podcast|whitepaper)\]"
@@ -2342,10 +2354,9 @@ def related_articles(query: dict[str, str], vulnerabilities: list[dict]) -> list
         query.get("cpeVendor", "").replace("_", " "),
         query.get("cpeProduct", "").replace("_", " "),
     ))
-    ignored = {"server", "desktop", "linux", "network", "networks", "system", "software", "secure", "manager", "agent"}
     terms = {
         term for term in re.findall(r"[a-z0-9][a-z0-9.+-]{2,}", normalized_search_text(raw_terms))
-        if term not in ignored and len(term) >= 4
+        if term not in GENERIC_ASSET_TERMS and len(term) >= 4
     }
     with database_lock, connect() as connection:
         rows = connection.execute(

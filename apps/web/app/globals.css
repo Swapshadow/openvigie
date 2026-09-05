@@ -216,6 +216,21 @@ button { color: inherit; }
 .primary-action, .save-asset { min-height: 38px; padding: 0 13px; border: 1px solid rgba(88,243,255,.48); border-radius: 12px; color: var(--night); background: linear-gradient(135deg, var(--cyan), #9ce9ee 52%, var(--pink)); cursor: pointer; font-size: 9px; font-weight: 700; text-transform: uppercase; }
 .primary-action:hover, .save-asset:hover { filter: brightness(1.08); }
 
+
+/* ── Recherche dans le catalogue (55 marques) ────────────────────────────── */
+.asset-finder { display: grid; gap: 6px; position: relative; margin: 13px 15px 0; }
+.asset-finder > span { color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
+.asset-finder input { width: 100%; min-height: 40px; padding: 0 13px; border: 1px solid rgba(88,243,255,.3); border-radius: 11px; outline: 0; color: var(--ink); background: rgba(88,243,255,.05); font: inherit; font-size: 12.5px; }
+.asset-finder input:focus { border-color: var(--cyan); background: rgba(88,243,255,.09); }
+.asset-finder-results { display: grid; gap: 3px; margin: 0; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: rgba(10,8,38,.97); list-style: none; }
+.asset-finder-results button { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; cursor: pointer; text-align: left; }
+.asset-finder-results button:hover { background: rgba(88,243,255,.11); }
+.asset-finder-results strong { font-size: 12.5px; }
+.asset-finder-results em { color: var(--cyan); font-size: 10.5px; font-style: normal; }
+.asset-finder-results span { margin-left: auto; color: var(--muted); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.asset-finder-empty { margin: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); font-size: 11px; }
+.version-back { justify-self: start; margin-top: 4px; padding: 2px 0; border: 0; color: var(--cyan); background: transparent; cursor: pointer; font-size: 9.5px; }
+
 .asset-builder { overflow: hidden; border-radius: 18px; background: rgba(10,8,38,.84); }
 .asset-builder > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 15px; border-bottom: 1px solid var(--line); }
 .asset-builder > header > div { display: flex; align-items: center; gap: 9px; }
