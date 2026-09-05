@@ -44,7 +44,7 @@ export default function LeakToday() {
 
   return <section className="content leak-watch" id="main-content">
     <header className="leak-hero glass-panel">
-      <div><p className="eyebrow neon">Fuites de données · veille attribuée</p><h1>LEAK <em>TODAY?</em></h1><p>Qui a fuité aujourd’hui ? Les signalements français et les incidents majeurs internationaux, sans republier de données compromises.</p></div>
+      <div><p className="eyebrow neon">Veille attribuée · France et international</p><h1>FUITES DE <em>DONNÉES</em></h1><p>Les signalements français et les incidents majeurs internationaux, sans republier de données compromises.</p></div>
       <div className="leak-live"><i /><strong>{data?.period.label ?? 'Synchronisation'}</strong><span>Mis à jour {data ? date(data.generatedAt) : 'en cours'}</span></div>
     </header>
 

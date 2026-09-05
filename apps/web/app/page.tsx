@@ -51,7 +51,7 @@ export default function Home() {
           <nav className="nav-list">
             {[
               ['bulletin', 'Bulletin'],
-              ['leaks', 'Leak today?'],
+              ['leaks', 'Fuites de données'],
               ['assets', 'Mon parc'],
             ].map(([id, label]) => (
               <button
