@@ -211,11 +211,11 @@ export default function WeeklyReport() {
   const maxTrend = data ? Math.max(1, ...data.trending.map((item) => item.count)) : 1;
 
   return (
-    <section className="content weekly" id="main-content">
-      <header className="weekly-masthead glass-panel">
+    <div className="weekly">
+      <header className="weekly-masthead">
         <div className="weekly-title">
           <p className="eyebrow">Synthèse éditoriale · 7 jours</p>
-          <h1>OPENVIGIE <em>RAPPORT HEBDO</em></h1>
+          <h2>Rapport hebdomadaire</h2>
           <p className="weekly-sub">
             {data
               ? `${formatDate(data.period.start)} → ${formatDate(data.period.end)} · généré le ${formatDate(data.generatedAt, true)}`
@@ -230,13 +230,13 @@ export default function WeeklyReport() {
       </header>
 
       {error ? (
-        <div className="weekly-message weekly-error glass-panel">
+        <div className="weekly-message weekly-error">
           <strong>Rapport indisponible</strong>
           <p>{error}</p>
           <button type="button" onClick={() => void load()}>Réessayer</button>
         </div>
       ) : loading && !data ? (
-        <div className="weekly-message glass-panel"><i /><p>OpenVigie compile les 7 derniers jours…</p></div>
+        <div className="weekly-message"><i /><p>OpenVigie compile les 7 derniers jours…</p></div>
       ) : data ? (
         <>
           <div className="weekly-kpis">
@@ -333,12 +333,12 @@ export default function WeeklyReport() {
             </ul>
           </section>
 
-          <footer className="weekly-footer glass-panel">
+          <footer className="weekly-footer">
             <p><strong>Sélection automatisée</strong> · {data.ranking.method}</p>
             <p>{data.ranking.warning}</p>
           </footer>
         </>
       ) : null}
-    </section>
+    </div>
   );
 }

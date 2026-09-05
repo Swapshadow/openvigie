@@ -42,14 +42,70 @@ function formatDate(value: string | null, includeTime = false) {
   }).format(date);
 }
 
-function ArticleThumb({ src, alt }: { src: string; alt: string }) {
+function ArticleThumb({ src, alt, eager = false }: { src: string; alt: string; eager?: boolean }) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
   return (
     <figure className="unified-media">
       {/* Feed-provided cover; hidden on load failure so the card stays clean. */}
-      <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+      <img
+        src={src}
+        alt={alt}
+        loading={eager ? 'eager' : 'lazy'}
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
     </figure>
+  );
+}
+
+function ArticleMeta({ article }: { article: LiveArticle }) {
+  return (
+    <div className="unified-item-head">
+      <span className="unified-cat">{article.category}</span>
+      <strong className="unified-source">{article.source.name}</strong>
+      <time dateTime={article.publishedAt ?? undefined}>{formatDate(article.publishedAt, true)}</time>
+    </div>
+  );
+}
+
+function CveList({ cves, max = 8 }: { cves: string[]; max?: number }) {
+  if (!cves.length) return null;
+  return (
+    <ul className="unified-cves">
+      {cves.slice(0, max).map((cve) => <li key={cve}>{cve}</li>)}
+      {cves.length > max ? <li className="more">+{cves.length - max}</li> : null}
+    </ul>
+  );
+}
+
+/** The one story the window is about: full-width, image-led, longest excerpt. */
+function LeadStory({ article }: { article: LiveArticle }) {
+  return (
+    <article className={`unified-lead${article.imageUrl ? ' has-media' : ''}`}>
+      {article.imageUrl ? <ArticleThumb src={article.imageUrl} alt="" eager /> : null}
+      <div className="unified-lead-copy">
+        <ArticleMeta article={article} />
+        <h2><a href={article.url} target="_blank" rel="noreferrer noopener">{article.title}</a></h2>
+        {article.excerpt ? <p>{article.excerpt}</p> : null}
+        <CveList cves={article.cves} />
+      </div>
+    </article>
+  );
+}
+
+/** Second tier: a magazine row of image-led cards under the lead. */
+function FeatureCard({ article }: { article: LiveArticle }) {
+  return (
+    <article className={`unified-feature${article.imageUrl ? ' has-media' : ''}`}>
+      {article.imageUrl ? <ArticleThumb src={article.imageUrl} alt="" /> : null}
+      <div className="unified-feature-copy">
+        <ArticleMeta article={article} />
+        <h3><a href={article.url} target="_blank" rel="noreferrer noopener">{article.title}</a></h3>
+        {article.excerpt ? <p>{article.excerpt}</p> : null}
+        <CveList cves={article.cves} max={4} />
+      </div>
+    </article>
   );
 }
 
@@ -119,16 +175,20 @@ export default function BulletinUnified() {
   const totalSources = data?.sources.length ?? 0;
   const withCve = visible.filter((article) => article.cves.length > 0).length;
 
+  // Editorial layout: the ranking already ordered the window, so the front page is
+  // a slice of it — but an illustrated story is promoted to the lead when one is
+  // near the top, because a lead with no image reads as a broken page.
+  const layout = useMemo(() => {
+    if (!visible.length) return { lead: null, features: [] as LiveArticle[], rest: [] as LiveArticle[] };
+    const leadIndex = visible.slice(0, 4).findIndex((article) => article.imageUrl);
+    const lead = visible[leadIndex >= 0 ? leadIndex : 0];
+    const remaining = visible.filter((article) => article.id !== lead.id);
+    return { lead, features: remaining.slice(0, 4), rest: remaining.slice(4) };
+  }, [visible]);
+
   return (
-    <section className="content unified" id="main-content">
-      <header className="unified-masthead glass-panel">
-        <div className="unified-title">
-          <p className="eyebrow">Toutes les sources · un seul fil</p>
-          <h1>OPENVIGIE <em>BULLETIN UNIFIÉ</em></h1>
-          <p className="unified-sub">
-            {data ? `${data.period.label} · ${data.totalInWindow} articles collectés · ${data.returned} affichés` : 'Chargement du fil…'}
-          </p>
-        </div>
+    <div className="unified">
+      <div className="unified-toolbar">
         <div className="unified-cadence" role="tablist" aria-label="Fenêtre du bulletin">
           {CADENCES.map(([id, label]) => (
             <button
@@ -142,9 +202,6 @@ export default function BulletinUnified() {
             </button>
           ))}
         </div>
-      </header>
-
-      <div className="unified-toolbar glass-panel">
         <label className="unified-search">
           <span className="sr-only">Filtrer le fil</span>
           <input
@@ -158,7 +215,7 @@ export default function BulletinUnified() {
         <div className="unified-stats">
           <span><strong>{visible.length}</strong> affichés</span>
           <span><strong>{withCve}</strong> avec CVE</span>
-          <span><strong>{onlineSources}/{totalSources}</strong> sources en ligne</span>
+          <span><strong>{onlineSources}/{totalSources}</strong> sources</span>
         </div>
       </div>
 
@@ -183,55 +240,62 @@ export default function BulletinUnified() {
       </nav>
 
       {error ? (
-        <div className="unified-message unified-error glass-panel">
+        <div className="unified-message unified-error">
           <strong>Fil indisponible</strong>
           <p>{error}</p>
           <button type="button" onClick={() => void load()}>Réessayer</button>
         </div>
       ) : loading && !data ? (
-        <div className="unified-message glass-panel">
+        <div className="unified-message">
           <i />
           <div>
             <strong>OpenVigie agrège les sources</strong>
-            <p>Le fil unifié rassemble les {totalSources || 42} flux suivis.</p>
+            <p>Le fil unifié rassemble les {totalSources || 44} flux suivis.</p>
           </div>
         </div>
-      ) : visible.length === 0 ? (
-        <div className="unified-message glass-panel">
+      ) : !layout.lead ? (
+        <div className="unified-message">
           <div>
             <strong>Aucun article pour ce filtre</strong>
             <p>Élargis la fenêtre ou retire le filtre de catégorie.</p>
           </div>
         </div>
       ) : (
-        <ol className="unified-feed">
-          {visible.map((article) => (
-            <li key={article.id} className={`unified-item glass-panel${article.imageUrl ? ' has-media' : ''}`}>
-              {article.imageUrl ? <ArticleThumb src={article.imageUrl} alt="" /> : null}
-              <div className="unified-item-head">
-                <span className="unified-cat">{article.category}</span>
-                <strong className="unified-source">{article.source.name}</strong>
-                <time dateTime={article.publishedAt ?? undefined}>{formatDate(article.publishedAt, true)}</time>
-              </div>
-              <h2>
-                <a href={article.url} target="_blank" rel="noreferrer noopener">{article.title}</a>
-              </h2>
-              {article.excerpt ? <p>{article.excerpt}</p> : null}
-              {article.cves.length > 0 ? (
-                <ul className="unified-cves">
-                  {article.cves.slice(0, 8).map((cve) => <li key={cve}>{cve}</li>)}
-                </ul>
-              ) : null}
-            </li>
-          ))}
-        </ol>
+        <div className="unified-front">
+          <LeadStory article={layout.lead} />
+
+          {layout.features.length > 0 ? (
+            <div className="unified-features">
+              {layout.features.map((article) => <FeatureCard key={article.id} article={article} />)}
+            </div>
+          ) : null}
+
+          {layout.rest.length > 0 ? (
+            <section className="unified-more">
+              <h3 className="unified-rule">Le reste du fil <i>{layout.rest.length}</i></h3>
+              <ol className="unified-feed">
+                {layout.rest.map((article) => (
+                  <li key={article.id} className={`unified-item${article.imageUrl ? ' has-media' : ''}`}>
+                    {article.imageUrl ? <ArticleThumb src={article.imageUrl} alt="" /> : null}
+                    <div className="unified-item-copy">
+                      <ArticleMeta article={article} />
+                      <h4><a href={article.url} target="_blank" rel="noreferrer noopener">{article.title}</a></h4>
+                      {article.excerpt ? <p>{article.excerpt}</p> : null}
+                      <CveList cves={article.cves} max={6} />
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
+        </div>
       )}
 
-      <footer className="unified-footer glass-panel">
+      <footer className="unified-footer">
         <p><strong>Sélection automatisée</strong> · pas une validation éditoriale.</p>
         <p>{data?.ranking.method}</p>
         <p>{data?.ranking.warning}</p>
       </footer>
-    </section>
+    </div>
   );
 }

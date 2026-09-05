@@ -31,10 +31,10 @@ export default function DeepSearch() {
     finally { setLoading(false); }
   }
 
-  return <section className="content deep-search" id="main-content">
-    <header className="search-hero glass-panel">
+  return <div className="deep-search">
+    <header className="search-hero">
       <p className="eyebrow neon">Exploration multi-sources</p>
-      <h1>RECHERCHE <em>APPROFONDIE</em></h1>
+      <h2>Recherche approfondie</h2>
       <p>Retrouve un sujet, une entreprise, une menace ou un produit dans les archives des meilleures sources cyber suivies par OpenVigie.</p>
       <form onSubmit={(event: FormEvent) => { event.preventDefault(); void search(); }} className="search-console">
         <label><span>Requête libre</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex. Pegasus iPhone" autoFocus /></label>
@@ -54,5 +54,5 @@ export default function DeepSearch() {
       </article>)}</div>}
       <footer className="search-method">{data.method} {data.webSearch?.active ? `Recherche web fournie par ${data.webSearch.provider}. ` : ''}La présence dans les résultats ne constitue pas une validation éditoriale.</footer>
     </section> : null}
-  </section>;
+  </div>;
 }

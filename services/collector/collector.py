@@ -35,6 +35,12 @@ MAX_RESULTS = 100
 MAX_FEED_BYTES = 2_000_000
 SAFE_TEXT = re.compile(r"^[\w .+()/,:-]*$", re.UNICODE)
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
+# Sponsored webinars and event trailers published inside trade-press news feeds.
+PROMO_TITLE = re.compile(
+    r"^\s*\[(?:virtual\s+event|webinar|sponsored|podcast|whitepaper)\]"
+    r"|\b(?:register\s+now|save\s+your\s+seat|sponsored\s+content)\b",
+    re.IGNORECASE,
+)
 TRACKING_PARAMETERS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
 WATCH_FREQUENCIES = {
     "Immédiat": 1800,
@@ -218,6 +224,40 @@ FEED_SOURCES = (
         "kind": "Presse cybersécurité", "default_category": "Cyberconflits & menaces",
         "priority": 9, "filter": "all", "license": "Titre et extrait court avec attribution",
     },
+    # Illustrated newsrooms: these publish a cover image per item, which is what
+    # gives the bulletin its front page. Verified to carry media:content or an
+    # inline <img> on every entry.
+    {
+        "id": "the-hacker-news", "name": "The Hacker News",
+        "feed_url": "https://feeds.feedburner.com/TheHackersNews", "homepage": "https://thehackernews.com/",
+        "kind": "Presse cybersécurité", "default_category": "Cybersécurité",
+        "priority": 9, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "dark-reading", "name": "Dark Reading",
+        "feed_url": "https://www.darkreading.com/rss.xml", "homepage": "https://www.darkreading.com/",
+        "kind": "Presse cybersécurité", "default_category": "Cybersécurité",
+        "priority": 8, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "the-register-security", "name": "The Register · Security",
+        "feed_url": "https://www.theregister.com/security/headlines.atom", "homepage": "https://www.theregister.com/security/",
+        "kind": "Presse cybersécurité", "default_category": "Cybersécurité",
+        "priority": 8, "filter": "all", "max_bytes": 3_000_000,
+        "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "security-affairs", "name": "Security Affairs",
+        "feed_url": "https://securityaffairs.com/feed", "homepage": "https://securityaffairs.com/",
+        "kind": "Presse cybersécurité", "default_category": "Cybercriminalité",
+        "priority": 8, "filter": "all", "license": "Titre et extrait court avec attribution",
+    },
+    {
+        "id": "numerama", "name": "Numerama",
+        "feed_url": "https://www.numerama.com/feed/", "homepage": "https://www.numerama.com/",
+        "kind": "Presse tech francophone", "default_category": "Cybersécurité",
+        "priority": 6, "filter": "cyber", "license": "Titre et extrait court avec attribution",
+    },
     {
         "id": "krebs", "name": "Krebs on Security",
         "feed_url": "https://krebsonsecurity.com/feed/", "homepage": "https://krebsonsecurity.com/",
@@ -304,16 +344,11 @@ FEED_SOURCES = (
         "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
     },
     {
-        "id": "anthropic-news", "name": "Anthropic",
-        "feed_url": "https://www.anthropic.com/rss.xml", "homepage": "https://www.anthropic.com/news",
+        "id": "openai-news", "name": "OpenAI",
+        "feed_url": "https://openai.com/news/rss.xml", "homepage": "https://openai.com/news/",
         "kind": "Éditeur IA · annonces & sécurité", "default_category": "IA · modèles & plateformes",
-        "priority": 7, "filter": "all", "license": "Titre et extrait court avec attribution",
-    },
-    {
-        "id": "openai-atlas", "name": "OpenAI Atlas",
-        "feed_url": "https://openai.com/atlas/rss.xml", "homepage": "https://openai.com/index/introducing-chatgpt-atlas/",
-        "kind": "Éditeur IA · navigateur & agents", "default_category": "IA · modèles & plateformes",
-        "priority": 6, "filter": "all", "license": "Titre et extrait court avec attribution",
+        "priority": 6, "filter": "all", "max_bytes": 3_000_000,
+        "license": "Titre et extrait court avec attribution",
     },
 )
 
@@ -732,6 +767,11 @@ def parse_feed(data: bytes, source: dict, fetched_at: int) -> list[dict]:
         if source["filter"] == "cyber" and not matched_topic:
             continue
         if source["filter"] == "regulatory" and category != "Réglementation & conformité":
+            continue
+        if PROMO_TITLE.search(title):
+            # Trade press feeds mix sponsored webinars and event promos into the
+            # news stream; they carry no security fact and must not reach the
+            # front page.
             continue
         published_value = element_text(entry, ("pubdate", "published", "updated", "date"))
         published_at = parse_published_at(published_value, fetched_at)
@@ -1520,6 +1560,110 @@ def build_weekly_report(limit: int = 40) -> dict:
         "categories": categories,
         "sources": active_sources,
         "ranking": news["ranking"],
+    }
+
+
+CERT_FR_SUBJECT = re.compile(
+    r"(?:vuln[ée]rabilit[ée]s?|faille|multiples\s+vuln[ée]rabilit[ée]s)\s+"
+    r"(?:critique\s+)?(?:dans|affectant|de)\s+"
+    r"(?:les\s+produits\s+|le\s+|la\s+|les\s+|l['’])?(.+?)"
+    r"\s*(?:\(\d{1,2}\s|\(|$)",
+    re.IGNORECASE,
+)
+CERT_FR_SOURCES = {"cert-fr-alertes": "alerte", "cert-fr-avis": "avis"}
+
+
+def cert_fr_subject(title: str) -> str | None:
+    """Best-effort product line from a CERT-FR headline, for asset correlation.
+
+    CERT-FR titles are highly regular ("Multiples vulnérabilités dans les produits
+    SonicWall (02 septembre 2026)"), so a single pattern covers most of them. A
+    miss returns None rather than a guess: the raw title stays authoritative.
+    """
+    match = CERT_FR_SUBJECT.search(title)
+    if not match:
+        return None
+    subject = re.sub(r"\s+", " ", match.group(1)).strip(" -–—:,")
+    return subject[:120] or None
+
+
+def build_cert_fr_digest(days: int = 30, limit: int = 80) -> dict:
+    """CERT-FR alertes and avis, split by urgency and enriched with CISA KEV.
+
+    Alertes signal active exploitation or an urgent national advisory; avis are the
+    routine vulnerability bulletins. They are kept apart because they do not carry
+    the same operational weight, and the UI surfaces alertes first.
+    """
+    now = int(time.time())
+    cutoff = now - max(1, min(365, days)) * 86400
+    try:
+        kev = get_kev()
+    except Exception as error:  # noqa: BLE001 - KEV is best-effort enrichment
+        print(f"CERT-FR digest KEV unavailable: {error}", flush=True)
+        kev = {}
+
+    with database_lock, connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM articles WHERE source_id IN ('cert-fr-alertes', 'cert-fr-avis')"
+            " AND published_at >= ? ORDER BY published_at DESC LIMIT ?",
+            (cutoff, max(1, min(200, limit))),
+        ).fetchall()
+
+    alertes: list[dict] = []
+    avis: list[dict] = []
+    kev_total = 0
+    all_cves: set[str] = set()
+    for row in rows:
+        cves = json.loads(row["cves_json"] or "[]")
+        all_cves.update(cves)
+        kev_cves = [cve for cve in cves if cve in kev]
+        if kev_cves:
+            kev_total += 1
+        entry = {
+            "id": row["id"],
+            "title": row["title"],
+            "url": row["url"],
+            "excerpt": row["summary"],
+            "publishedAt": iso_timestamp(row["published_at"]),
+            "kind": CERT_FR_SOURCES.get(row["source_id"], "avis"),
+            "subject": cert_fr_subject(row["title"]),
+            "cves": cves,
+            "kevCves": kev_cves,
+            "source": {"id": row["source_id"], "name": row["source_name"], "homepage": row["source_home"]},
+        }
+        (alertes if row["source_id"] == "cert-fr-alertes" else avis).append(entry)
+
+    # Product lines seen most often: the shortlist an operator should check first.
+    subjects: dict[str, int] = {}
+    for entry in (*alertes, *avis):
+        if entry["subject"]:
+            subjects[entry["subject"]] = subjects.get(entry["subject"], 0) + 1
+    top_subjects = sorted(
+        ({"subject": name, "count": count} for name, count in subjects.items()),
+        key=lambda item: (-item["count"], item["subject"]),
+    )[:14]
+
+    return {
+        "generatedAt": iso_timestamp(now),
+        "period": {
+            "label": f"{days} derniers jours",
+            "start": datetime.fromtimestamp(cutoff, PARIS).isoformat(),
+            "end": datetime.fromtimestamp(now, PARIS).isoformat(),
+        },
+        "stats": {
+            "alertes": len(alertes),
+            "avis": len(avis),
+            "cves": len(all_cves),
+            "kev": kev_total,
+        },
+        "alertes": alertes,
+        "avis": avis,
+        "subjects": top_subjects,
+        "source": {
+            "name": "CERT-FR · ANSSI",
+            "homepage": "https://www.cert.ssi.gouv.fr/",
+            "notice": "Alertes et avis officiels du CERT-FR. Vérifie toujours l'avis d'origine avant d'agir sur une infrastructure de production.",
+        },
     }
 
 
@@ -2477,6 +2621,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 print(f"weekly report error: {error}", flush=True)
                 self.send_json(500, {"error": "Erreur interne du rapport hebdomadaire"})
+            return
+        if parsed.path == "/bulletin/cert-fr":
+            try:
+                parameters = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                try:
+                    days = int(parameters.get("days", ["30"])[0])
+                except ValueError:
+                    raise ValueError("days doit être un nombre") from None
+                self.send_json(200, build_cert_fr_digest(days))
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+            except Exception as error:
+                print(f"CERT-FR digest error: {error}", flush=True)
+                self.send_json(500, {"error": "Erreur interne du fil CERT-FR"})
             return
         if parsed.path == "/ai/news-brief":
             try:
