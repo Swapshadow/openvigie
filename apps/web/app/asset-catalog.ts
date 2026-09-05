@@ -134,12 +134,12 @@ export const vendorCatalog: VendorDefinition[] = [
   },
   {
     id: 'checkpoint', name: 'Check Point', short: 'CP', products: [
-      { id: 'gaia', name: 'Gaia OS / Quantum', family: 'Pare-feu', part: 'o', cpeVendor: 'checkpoint', cpeProduct: 'gaia_os', versions: ['R82.10', 'R82', 'R81.20', 'R81.10'], advisoryUrl: 'https://support.checkpoint.com/results/sk/sk165052' },
+      { id: 'gaia', name: 'Gaia OS / Quantum', family: 'Pare-feu', part: 'o', cpeVendor: 'checkpoint', cpeProduct: 'gaia_os', versions: ['R82.10', 'R82', 'R81.20', 'R81.10'], advisoryUrl: 'https://support.checkpoint.com/results/sk/sk180898' },
     ],
   },
   {
     id: 'sophos', name: 'Sophos', short: 'SO', products: [
-      { id: 'sfos', name: 'Sophos Firewall OS', family: 'Pare-feu', part: 'o', cpeVendor: 'sophos', cpeProduct: 'sfos', versions: ['21.5', '21.0', '20.0', '19.5'], advisoryUrl: 'https://www.sophos.com/en-us/security-advisories' },
+      { id: 'sfos', name: 'Sophos Firewall OS', family: 'Pare-feu', part: 'o', cpeVendor: 'sophos', cpeProduct: 'sfos', versions: ['21.5', '21.0', '20.0', '19.5'], advisoryUrl: 'https://support.sophos.com/support/s/?language=en_US' },
     ],
   },
   {
@@ -155,7 +155,7 @@ export const vendorCatalog: VendorDefinition[] = [
   },
   {
     id: 'ivanti', name: 'Ivanti', short: 'IV', products: [
-      { id: 'connect-secure', name: 'Connect Secure', family: 'VPN', part: 'a', cpeVendor: 'ivanti', cpeProduct: 'connect_secure', versions: ['22.8', '22.7', '22.6', '9.1'], advisoryUrl: 'https://forums.ivanti.com/s/article/Security-Advisory-Landing-Page' },
+      { id: 'connect-secure', name: 'Connect Secure', family: 'VPN', part: 'a', cpeVendor: 'ivanti', cpeProduct: 'connect_secure', versions: ['22.8', '22.7', '22.6', '9.1'], advisoryUrl: 'https://www.ivanti.com/blog/topics/security-advisory' },
     ],
   },
   {
@@ -171,7 +171,7 @@ export const vendorCatalog: VendorDefinition[] = [
   },
   {
     id: 'crowdstrike', name: 'CrowdStrike', short: 'CS', products: [
-      { id: 'falcon-sensor', name: 'Falcon Sensor', family: 'EDR', part: 'a', versions: ['7.24', '7.23', '7.22', '7.21'], advisoryUrl: 'https://www.crowdstrike.com/en-us/blog/category/product-tech/' },
+      { id: 'falcon-sensor', name: 'Falcon Sensor', family: 'EDR', part: 'a', versions: ['7.24', '7.23', '7.22', '7.21'], advisoryUrl: 'https://supportportal.crowdstrike.com/' },
     ],
   },
   {
@@ -217,7 +217,7 @@ export const vendorCatalog: VendorDefinition[] = [
   },
   {
     id: 'proxmox', name: 'Proxmox', short: 'PX', products: [
-      { id: 'pve', name: 'Proxmox VE', family: 'Virtualisation', part: 'o', cpeVendor: 'proxmox', cpeProduct: 'virtual_environment', versions: ['9.0', '8.4', '8.3', '8.2'], advisoryUrl: 'https://www.proxmox.com/en/services/security' },
+      { id: 'pve', name: 'Proxmox VE', family: 'Virtualisation', part: 'o', cpeVendor: 'proxmox', cpeProduct: 'virtual_environment', versions: ['9.0', '8.4', '8.3', '8.2'], advisoryUrl: 'https://pve.proxmox.com/wiki/Roadmap' },
     ],
   },
   {
@@ -396,7 +396,7 @@ export const vendorCatalog: VendorDefinition[] = [
         id: 'server', name: 'Nextcloud Server', family: 'Collaboration', part: 'a',
         cpeVendor: 'nextcloud', cpeProduct: 'nextcloud_server',
         versions: ['34.0.0', '33.0.5', '33.0.4', '33.0.3', '33.0.2', '33.0.1', '33.0.0', '32.0.11', '32.0.10', '32.0.9', '32.0.8', '32.0.7'],
-        advisoryUrl: 'https://nextcloud.com/security/advisories/',
+        advisoryUrl: 'https://nextcloud.com/security/',
       },
     ],
   },
